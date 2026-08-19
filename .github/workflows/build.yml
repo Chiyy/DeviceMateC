@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          UPX_VER="4.24"
+          UPX_VER="5.1.1"
           curl -fsSL "https://github.com/upx/upx/releases/download/v${UPX_VER}/upx-${UPX_VER}-amd64_linux.tar.xz" \
             -o /tmp/upx.tar.xz
           tar -xJf /tmp/upx.tar.xz -C /tmp
