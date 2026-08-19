@@ -1,0 +1,220 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: 'write'
+
+env:
+  APP_NAME: DeviceMate
+
+jobs:
+  build:
+    name: Build ${{ matrix.os_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            os_name: windows
+            output: DeviceMate-windows.exe
+          - os: ubuntu-latest
+            os_name: linux
+            output: DeviceMate-linux
+          - os: macos-latest
+            os_name: macos
+            output: DeviceMate-macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MinGW-w64 (Windows)
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
+          echo "/c/msys64/mingw64/bin" >> $GITHUB_PATH
+
+      - name: Install UPX (Linux)
+        if: matrix.os_name == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq upx-ucl
+          echo "UPX_PATH=$(which upx)" >> $GITHUB_ENV
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.os_name }}" = "macos" ]; then
+            make CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -arch x86_64 -arch arm64" \
+                 PLATFORM_LDFLAGS="-Wl,-dead_strip -Wl,-s -arch x86_64 -arch arm64"
+          else
+            make
+          fi
+          if [ -f DeviceMate.exe ]; then mv DeviceMate.exe "${{ matrix.output }}"; fi
+          if [ -f DeviceMate ]; then mv DeviceMate "${{ matrix.output }}"; fi
+          ls -lh "${{ matrix.output }}"
+
+      - name: Check binary size
+        shell: bash
+        run: |
+          SIZE=$(stat -c%s "${{ matrix.output }}" 2>/dev/null || stat -f%z "${{ matrix.output }}" 2>/dev/null)
+          echo "Binary size: $SIZE bytes ($(echo "scale=2; $SIZE/1048576" | bc 2>/dev/null || echo "$((SIZE/1048576))") MB)"
+
+      - name: UPX compress (Linux)
+        if: matrix.os_name == 'linux'
+        shell: bash
+        run: |
+          UPX="${{ env.UPX_PATH }}"
+          if [ -x "$UPX" ]; then
+            set +e
+            "$UPX" --best --lzma "${{ matrix.output }}" 2>&1
+            set -e
+          elif command -v upx &> /dev/null; then
+            set +e
+            upx --best --lzma "${{ matrix.output }}" 2>&1
+            set -e
+          else
+            echo "UPX not found, skipping compression"
+          fi
+          AFTER_SIZE=$(stat -c%s "${{ matrix.output }}" 2>/dev/null)
+          echo "After UPX: $AFTER_SIZE bytes"
+
+      - name: Note (macOS UPX skip)
+        if: matrix.os_name == 'macos'
+        shell: bash
+        run: |
+          echo "::warning::UPX cannot compress macOS Mach-O binaries. Binary stays at stripped size."
+
+      - name: Create macOS .app bundle
+        if: matrix.os_name == 'macos'
+        shell: bash
+        run: |
+          APP_NAME="${{ matrix.output }}.app"
+          EXE="${{ matrix.output }}"
+          rm -rf "$APP_NAME"
+          mkdir -p "$APP_NAME/Contents/MacOS"
+          mkdir -p "$APP_NAME/Contents/Resources"
+          cp "$EXE" "$APP_NAME/Contents/MacOS/$EXE"
+          chmod +x "$APP_NAME/Contents/MacOS/$EXE"
+
+          cat > "$APP_NAME/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>DeviceMate</string>
+              <key>CFBundleDisplayName</key>
+              <string>DeviceMate</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.devicemate.app</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleExecutable</key>
+              <string>$EXE</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.10</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          zip -r -q "${APP_NAME}.zip" "$APP_NAME"
+          echo "Created $APP_NAME and ${APP_NAME}.zip"
+
+      - name: Set execute permissions (non-Windows)
+        shell: bash
+        run: |
+          if [ "${{ matrix.os_name }}" != "windows" ]; then
+            chmod +x "${{ matrix.output }}" 2>/dev/null || true
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os_name }}
+          path: |
+            ${{ matrix.output }}
+            ${{ matrix.output }}.app.zip
+
+  release:
+    name: Create Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find dist -name "DeviceMate-windows.exe" -exec cp {} release/ \;
+          find dist -name "DeviceMate-linux" -exec cp {} release/ \;
+          find dist -name "DeviceMate-macos" -exec cp {} release/ \;
+          find dist -name "DeviceMate-macos.app.zip" -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ -z "$VERSION" ] || [[ ! "$VERSION" =~ ^v[0-9] ]]; then
+            VERSION="v$(date +%Y.%m.%d)-latest"
+          fi
+          cat > release_notes.md << EOF
+          ## DeviceMate $VERSION
+
+          跨平台硬件信息采集工具 - C 语言实现, 单文件无依赖
+
+          ### 下载
+          - Windows: \`DeviceMate-windows.exe\`
+          - Linux (amd64): \`DeviceMate-linux\`
+          - macOS (Universal): \`DeviceMate-macos\` 或 \`DeviceMate-macos.app.zip\` (双击运行不弹终端)
+
+          ### 使用方法
+          \`\`\`
+          # Windows: 双击 exe 文件
+          # Linux: ./DeviceMate-linux
+          # macOS: 解压 .app.zip 后双击 .app
+          \`\`\`
+
+          ### 命令行模式
+          \`\`\`
+          ./DeviceMate --once          # 采集一次并输出
+          ./DeviceMate --once --json   # 输出 JSON
+          ./DeviceMate --port 8080     # 启动 API 服务 (无桌面环境)
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('auto-{0}', github.run_number) }}"
+          name: "${{ startsWith(github.ref, 'refs/tags/v') && format('DeviceMate {0}', github.ref_name) || format('DeviceMate Auto Build #{0}', github.run_number) }}"
+          body_path: release_notes.md
+          files: |
+            release/DeviceMate-windows.exe
+            release/DeviceMate-linux
+            release/DeviceMate-macos
+            release/DeviceMate-macos.app.zip
+          fail_on_unmatched_files: false
+          generate_release_notes: false

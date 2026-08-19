@@ -1,0 +1,14 @@
+# Build artifacts
+*.o
+*.exe
+*.app
+*.zip
+DeviceMate
+DeviceMate.exe
+web_ui.h
+logo_png.h
+app_resource.o
+
+# OS files
+.DS_Store
+Thumbs.db

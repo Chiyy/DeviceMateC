@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/x-icon;base64,AAABAAEAEBAAAAAAIAAIBAAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAQAAAAEAgGAAAAH/P/YQAAA89JREFUeJwlk1tMHGUAhf/LzD83ZvbCzuwibDW0CC6SUBZNoFFaEhNMtLZo09iHhghtfDG1pImXtFkv1aT64oMx0kSNorWGXiTRpPogJdporVVqgYAXSrmVS9n7zs7ln/kNeJ7Pl3MezoFgUwx2dFzGRqMuJnTgTObzOFQiMJMRqa4Dok+sWXcMValKJAvZsTFtiTQXhoaADwBkKJVKoeTh69zo6C6KPXg8DYRWsCp18QH5gG+bjcz1+6d5zSASeQtMTshM8AeGhqC3EZtKMQT/bwDA/kNTbyLMPwU9c55RX+QgE1mZZjAAUeaw2wKEDczybvJISHpO+eLpS20vbXBwb89kCyJitxGgid490Y+mZwsoqBLZ8/y7HGCySHhimg4TEDBtC6pGjeh/9u5fzyBGFiCzznGVEZz0AHmMx/YnyXatkGzXrgIAEmvz3nY9hL8BFaC4NGtvsUxfrwxJ6wEdGF9BNiJKQp+o0jlUyDg/mVnzF0niYuk5Z/2JPVNtrx6b2WrbbAaqcPXxHT9UWQU3Q3iu5ftz/6qDA/PT1AeyZ5dvZOeLI7DvxfHDCAb6FFJ8b+W2rQXC6hErWxpDjq2LEB4tlOj1lofC3Udeq5s/tPPX80GdvVFeoqVILPQKUYqfIuuuc9XKWX8ixngJgZDClc58/EVTL+HwMuJgv4Lh4q3x/PP93b91hQJS3IgJQjCEw17ZGS+teleQqsIWDGGdHhQDW+Lyva7tUwCAYQTFoohhnaLxF+2cvcwh1kOd9KkKjWsKVioCBlytFiNJVFyFY9D1b62sldOzf+dmmMk/erDzRmd6xWxGvv+BXfQaOp+OpOoblC4ni4C17pmlrFtClM6W5vK/I03nHlBkqQa4TIHUHpY5cTrRLO/s3B19+eyZmxfqG9Wfdx+4X+49mbCqtinXwtXCUG6x4IkiHw9Wy42cu2BN+RKbi8aReursjhgvgc+Laa82n/Hdb8d7/JowuLY061YVCzRy8HjTcryed1KX06GyZS2xkj/FKQZOAirFcwuZ9bJF1X8mqUAwW8QC8wRWbk2nBQJ5P1cRBiS9bkvBMi/6PqqpkKV7cMBv3Zxy17YXhPsefPYsdCQJ+mWbUQ9hhBAPkOebLsAccJGLRQyoiSjRFB04XQP8/tbqVhPt28fwc9sfoR8Ot+/lsGvWbK34WuLxj9EYmZBFcTAclfKVYfK+FiFEr5XeloLAOHGp7ckNONUxwqGNZw1tPhpAVaMn9Qgaloj7ZagSnc4v3/kuYAjvjF2YuxLQ4Yljgw//ocbAUUY37Ay+PrqL/gdah7mKS4tpKwAAAABJRU5ErkJggg==" type="image/x-icon" />
+<title>DeviceMate - 设备信息采集工具</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.container {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  max-width: 720px;
+  width: 100%;
+  overflow: hidden;
+}
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  padding: 28px 32px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.header .logo {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  background: #fff;
+  padding: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.header .title {
+  margin-left: 15px;
+  height: 72px;
+}
+.header h1 { font-size: 24px; font-weight: 600; }
+.header p { font-size: 13px; opacity: 0.85; margin-top: 6px; }
+.content { padding: 24px 32px; }
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f0f0f0;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.info-list { display: flex; flex-direction: column; gap: 2px; }
+.info-item {
+  display: flex;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+  align-items: flex-start;
+  gap: 16px;
+}
+.info-item:last-child { border-bottom: none; }
+.info-label {
+  flex-shrink: 0;
+  width: 140px;
+  color: #888;
+  font-size: 14px;
+  line-height: 22px;
+}
+.info-value-wrap {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.info-value {
+  flex: 1;
+  color: #333;
+  font-size: 14px;
+  line-height: 22px;
+  word-break: break-all;
+  font-family: "SF Mono", "Consolas", "Monaco", monospace;
+}
+.copy-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.copy-btn:hover { background: #f0f0ff; color: #667eea; }
+.copy-btn:active { transform: scale(0.9); }
+.copy-btn svg { width: 16px; height: 16px; }
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin: 20px 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid #667eea;
+}
+.usb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.usb-table th {
+  background: #f8f8fc;
+  color: #666;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid #eee;
+}
+.usb-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f5f5f5;
+  color: #333;
+  line-height: 20px;
+}
+.usb-table tr:last-child td { border-bottom: none; }
+.usb-table .col-serial { font-family: "SF Mono", "Consolas", "Monaco", monospace; }
+.usb-table .col-action { width: 50px; text-align: center; }
+.usb-empty {
+  text-align: center;
+  padding: 24px;
+  color: #bbb;
+  font-size: 13px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+.footer {
+  padding: 16px 32px 28px;
+  text-align: center;
+}
+.copyright {
+  margin-top: 50px;
+  width: 100%;
+  text-align: center;
+  color: #b9b8bf;
+  font-size: 12px;
+}
+.btn {
+  display: inline-block;
+  padding: 10px 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.btn:hover { opacity: 0.9; }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  margin-left: 12px;
+}
+.btn-danger:hover { opacity: 0.9; }
+.btn-danger:active { transform: scale(0.98); }
+.timestamp { margin-top: 12px; font-size: 12px; color: #bbb; }
+/* Toast */
+.toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: #333;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAC/VBMVEUAAAD79//38/348//SyvLn4fbY1+738v718f1mPrlxOLrYzvn18fywodf38/3q4/+imdBZVslsZs728fxjS8b17/318P3t5/rz6/tgVcT18f348v3SxvTVyPTy7vrz7frUxvTTxfNtP8Do3/Xt5P1VYNHZ0PlqP8JrTMd+YcCnnNLUyPZeZc3n4fehmdLXy/ZoRsXVy/L38/yLfsjx6vzVyvHHuebn3/nGs+PHsePCsOFqXsdrW8JmScXl3PbYz/fp4/rl3Pnm3fplR8JfUcvTxPJ3WMPYzvjs5fnz7PzPxey9q97s5vpdZ9Ds5vloTMbw6vvZzvXYzvJnT8VdWcp2YMVTYNLXz/jYz/Tu6frWyvDe1vOdjNFaY9FnTsjYzPVzQMS9p97Ow+5VY9G+od3d1Pa2vOKIec5yPcGVe8xjUMpwYMp6VcLSy/B0bcna0/O2m9ygoNp2Z8q2uuJsQcTt5/mYh9TJweuqm9a9sd+ondeXhtDa0vOci9ZUX9KYfc10YMTHsuHm3/e5teB7Y8GJfM22rdp2UMKGcsmFbcuKdc6totmzqNxgS8pnQ8d4NsVoRMhgTsxdT8tTY9hfUM5XXNFaVdFcVc9kRshpQcV3OMJ0N8FPY9RqQ8NVYNJmS81wPcVcV9FmR8tRYNPbz/ViSMltOsHRxvNXWNFVYdRxO8dmQcZcUs1iTMxlSstwO8VXX9JiSMZ1NsNWVc9vPMJQZddjQ8l3NMBmQMNsPsVkP8JlRMvUx/dXWs11OsdzOcVzNb3g2fpyNMFpQcBsPcN2fNJ6dM1dU8lpPsJsP8FVVM1pP8VeS8lgT9JlSMre1fdqQMlxSbza0/pwPsxdWc2jkNl/asx4R8CIhNebbM1jQ8XWzfbTwfVYU855ZcuJYciDiNhkSc1ZWspjSsLNw/CEj9taWdOQYclYYNSPgNOJVseFg9WBds/bz/toOL2yreBlPr/WzPrayv2Mbszm3/qEX8dgas1pYcprT8GrldmhgNJ3VcWTd89tT8dqcdDJH9a2AAAAjXRSTlMAQERAPr8GSj1BP7plFVEMC7++M795XxV1PDhYv80rJbC4gBwRwYTAvkAf7r6CK6RzOW4+Hyn49/Lr4ioW8quV7OTZS+fmuqyRbTP9sa+dh4JhTNde/fHw3drZwqucmHL+4N+E/vf16uPiyKugfmpX/vzg19HGupiQd25lQurcy8vJwr17VlXtx6yH1cj5aJ6rAAAUO0lEQVR42u2beVhUVRTAb2AzFAgWsYgCGpQlGS6EIIGmoUC471umZqbm1maZ7fvCOCDLDMoisskqA7IEiQQpCIFSiSxqBuWSlqSWS/V1zr3vzbszwwxI9X390a9hgDsx5/fOvfe8++4byf/8z//8t+k/efK7hMdv8gPrZDoNi+9cp/sna+7U/ZMJ902Eht4xa++Ovbs28+8+Jz5+14t8/IP50emL+HBffvll5Etcw/CUsFN5m3spMGfv3r07XuUaJscDfzpxDfn5+dEHXKSG1V8CZ92IiMz/VHZ2zqukV/hh/B3fu0ot96DAryOlhjuio/Pzf7OWGh5FgfNmRGRUAgicOuveK4FR26iAbbcC9voCktH9CQkJp06ddf07Ak68wB4DgfT836z0BeT6Ara9Ftirm4E9Z/bs0RHYuXNntGEGzP6pDGzTFzgDGTAQMBwDt+gLeP0dARddgShDAbmOQOSX5831Bdx6KQDozoIz0AWmBSIjDQRyUnop0G8b8j3X8sCZPSAg5wWA38y5hkjgvOT8MAoknb3p0LMm33PPPa9to9yj5YE5KLDntTu0fA3xY2IelRrCI5GZd4nMRIFTOavvum+qH+kpDy+es4PF3s0ejDMIGERFfYZ8B18YHw0OAlmUyMiIyMjw8LC6urowJCeBDoKk+hRVy+pRPTwDiOFpaBoepz/MQHyI8TE8BSSyUCAiAhwiITrEBwOExc/JyUkBgRRVoeoZG9I9y8Xg4pHH07zH70Gi4CGE/+5rgRiIz8g6CAmICM8WokNkCA/Up9SrVKrCwlLVG+49jY+R8enMbjh2FluERqcwh4MiEQg9eEh/ClCfQ8PX16vy8iABQMsbNt3ln6Z/x7b4X78wzYEuOQqcYBzlmd2eR3PQovqwm/E3hyXg+wVBI+VyM7NbADP8xmC/8T/Lra2t5WYScrm1vb2Vlf0AudjK3sP+pdmYAlV9+3smBRbTBJzxHkn+cRw+aEED1SqZqQSw/ve2IP8CsjcUhYWKlqvriXHW7d0LAhvtTRxHrw6eUPr6K1UKhWoRMc7kvWCwayGhPOQ5cKxeDR8RmOaxhNwkm9LSlo0gyFSlUqFQmFqfvbYDViB/2hEkxKOhoXUuNQhZ1rGJKnmMDp2XNkzI6IgRffQZ0cewcWzruIUeHq707KZEfncz6PlZy5cvnjx58fLlO5Bv2XJi3jgzsqRzCgGWVazoGADfPStsicz5EZbWeZ1lZWk8HR1pOpTRp7Ky0V5kBLPum6kAgRsfTn18IvKMUJr95sBhw6GLfH8LPdrWIHh2Ho8/po3t0zENfhiIv91bQQAb54bQYQG39oA0+CObNHogsuJMJaLIzCwGLl7czPK+lyIY7BIEbFphKLjNfYGghseyClyWTGpdT0bMnU/wx0ZH0jPGli3pMyh5AD3JFqsVSgU1AIXqixcvuWHrDhZelNj1LQpgNOdBHg3WNN0Bb9nTrMztbO28bIbv2hhKeoj7grS05CBCBdRqpZACtRoFrtC3fVRKP/1BEHAPSG4dZ0d0cJ3XOB+V1jbOdyc9NnCcZk4Egbi4OLVCrQABjP/TN3S590q8YAAzcBt0AROgvS0nHKwJj3/6hfm9qQcoANRmZkIXVNdWV1+ZwtpnvP3cU5SNuxCtwFqIJsI7rb8wDsyNELJkhPFaCALV6huPLX2MMmYa0aPvbl0BNgJ4xoJTn0YT8T07OjoG24iVghWHESEPhWyRabvgpNx4inbvAgWYBWK0AUQPy0YzyAI0G2FJ8hS5c8cwVkkDyxChJthru8CEwNBdiCgwfUWFhaHALSAgGhriEQCDrmM8Adw8kt+69a1bGY+MdpIErIkxHuQzML0iNJjcrEAaFA8bEMDZl+xo0MVMYIAJgd1aAdmKcYTctMCgMssZzq3BWCmTpxAjAsZPtn3jIb4g4Nb4CDFk2GVXkwI2C8s6VwRhGUsO7aKL6SC8YjwDst28AGTAEC+ciubEOJb0VU+uUvECSigDUP6MEh+vFfBqnE+6xGQG8FVXeGrkKhUvoO5GAPag4rUCo3sl4AkZcDdSKfuq1WoQMJgF/Rc/IBAfD5cBrBDZjMMT4YTJk8XX7lyzfPj9/YRyLNFv6l133fGOtNqfBAIjLkwTXhsy5L53ZJLAYTCoLXn/PmDIkCEThZdm7RLYDTABxAteXRwVlX5I4Pjx6OOHDq0ePnR9hTUXf2YkXI3UPevOj4E+F2gpkj2vLG5paXmdEzh8WA3ngKoq+PoJWMTyzsLD0fMCSP90EEjPz8f4+ccpMTFZKxfKuG3ACKSu7iVJwAKKNRWYqoAloDrzqlwSAGohPpCaCgKzXfAYokQBVIAvSWBxOsQHA4DFzwLgInQdtx8QEYbxw094aQWchAz4qeipX3HVTjsIMX5JlSRwg770qCQAQ4DPwJ0/pKf/QAUOHccsYHjKM9oc3BUWRq8GwxeJAg0WZETDNHxJoUSMCaDBNbYe+BV6n4aHS2B48AIQnvYBgsd/kAmEf2AjCkD07Gy4HL0aIgmQkQ4wtDC6oUBJSRUsBVKRn04GsfYtm95+DnlqI24D6AigwZ8/Ixs3fnP+64OiQOQiKQNhGL+u7gNRwJwttf2F+IojWoEH4fhLSq74vvnmmDFjfH3ftDOYp3gVbiDwhVA6ZbYDXlrZXofxYRNisyiQjQZ1KXXtm7WDEHkcY+MaNPOIo1agBDlpZnw9EIXoCkSjgBabl2fXRUQCEbNdmQCGR+pgKnIC/RUial4go6Qq0cTpeCjdf+AEdv7ww04U4Ah5NhL3YCLqFjGBbBgCOTmwIVGX9xIn8LxCpUAyM3mBqoxEkwIPYvyoH3kB2IMCAR53MMCpDylgAmG4EQL7ISpoEQWGK5DiYigDtZLA0NTc3KrcmxIAolGAZxRNgVB77sPQDFUh3sqwCKUjEMLj1Q+u/3kBpDuBz3gB5IAgYBNCGGvCqcCrNAM09tH2+tLSQtXVLYQxlSa/8opanakrUJCbmnrFxBjQz0BMNCcwNtlW8KTFJ/uAk1bg2oelIFCftEoo4Uoq8M2LaqBamoZ9U7ECmVgRyVgGeIHomJgD1oJAqzh/ZtKNwKvBkoCNPwjADtDL7CREh9+NgNtqK9XFvEBBYmKVsS6Q9YOug3PPZ+ncLDgeEx2z84BcONM3ii88TgXyNlEB3AO8RtahQGHpSnccgfT4D/u43V1cWVmpJ5BYcHKGfujlrwm7gOl48uEFIH5MjHgDZlKD+MKs8Gyc/G8zAVWe6hvIiqIQc/AyjkCMr7g0jdxdDQJx0hjolwjk5sIjF78XTHRgxxMVhfGZgr5ANAgM4Iss0j87G6e/D86CekgACoxSq2AYthz1ghqIAnHzCApUV9YYCCAYPzX1ddr63WdRXHzDDBywl66KiMzdxoH0P0UNvOk0zEmiAmRiUlKpqrBlkR9UXxyB1iBQiRxxtvTw8PhlrgXpm5uRmJiRmwFAfBA4aYsdg9ve0PUI/XZMu+hdE4OctxIELsxtbW1NTu6c+yLGT8n+2WHS9EfpViwKhMQpFYUqxR9KZSZwI5RgBqjA+PGXL18e/YILFchg0Pipl+ixvYHrnfx8POvmp6OABbGZZDl2rGXAs5ABTqBx3COXgdHjXs1OwL1g75DQIP8EMIAMoC7b/MD819Z6exFtBkZqu4AePEtAKvKYF72IXPmdyCFBYEZj44XGxsYTKJAlCgxsFFMzNRui5uUNxC4AAVU9FXDwV6ABlv/Dv2NQUcBREijH6E8wCpo2BAslTu5oBwywWktTAQIya3srRzurZ7MgviTQqp2GWPzz2oNQAO5F4BhA1sVRgTj14T8WEipQVVNZU4PTkM/A6Sn2VsHBwY52wa4GtQAF0o9Jg1BHwLJVLhYijK+abYcCSUyAtRfjwh8ENjiJAsCRado6wATMjV8b5iOcQCQKHBAFKoRS7JeHk7/luhkTSNIKjKqMQ9S49cIE0IDPQG4uCMi7EfiRE8C7QKKAi7U4BGDvHwS8ZYIADkLGRIxfXe3tIAjAArCGrwMFILDPhMCD0Xg3nhPI4gUYWOlSksDgjwBCBYBCUWAoCtT+bkVEATRosvS0RFxRoLy83JTAcT0BuvjCQsSz+lQ9CBRec+EFBF6JUyqvgBknUNAEdaCiomKcC3QBCpy0NiWQHm0oIJRiaQpgv/9xKxEFVCAg8vLHY4JkWoHERFBoCtYO8gKIn3FugPH1wPFogB+EuPrS6YKH70qilP7MRiT+Wo8CPJxAYkFBkyMnAJyzMr4egAVIFwLWUvip/jkYPiHhkh3RCqhKjQogTdwsQIEu9oj8+gtE70QBcx2B8N8+ug1fmzD88dUJABU48RYRBYBuBLg6QDPw0e0MP/Gw7oHVP4XdiNURCI/A5V94NgXj0xFwY56DKKDsXsBOR0Cj+Vxg/9MPsmvgaJ34vABeAuHyjxIOAkC9qvTEIy5EYIhSmaRMQgHLYd0L0DGg2Q6xGatssOPzaXBBIObrmB8lgezwiDB68SklICFJdfZWNyIJACjg+ovhrtpUfYHt5RrIwHaACZyzxpFxKJrCDL6O4QTWwGUXuw0Npz8Mj89HvflRPAQ3IZKuwYYKL+AuZKCgpiAx95yjJIBoQGE/o9mMLT1FATj57+QFRrXT6HjuF+L/cX2ZnQPheEathuXXAkjkL9Km1vQLcvb3BQUFuRkbXAwEcAAAsQuY7ovHfgSOHTt2HgwkAWDzyhMiR4+e/ebnZVP0y6jbyrji2T548uMycO8FoXguaqppumYnnWv2Q/yipmaB6wtENQcLxMnpPTj9SoMQsbEeOdLKCh5WA+S3uGKDjf7eqP0wKweiJ9Aplg5bOzv4K90MnB5p64TRLGwNSzHGz0IBU9vhRvhlPHefij996AloTpsZL8VMwMKEANxI1MdhoK2egGeZTrHrM9dKEtBoTps4GWV1J7CkzGOtfif0KXPU64JJZToxPDsd+QycszcpkGVKwLOsIbnNWdaVgIwTmF7m7M7v4XeaiQKxKGBlQgAwITC9db7cdXCblb4A1kAbEJBE2wJduA30TnMuA7EmBIZGSAIzlnSxTY1Xh15tC7sWGM+1rU3zcOEEzHoscBC2IqmAW1nnPMuBHIMHDxzokQzv+lBZgMkMMJakeWwhAoOxLiH9imLBwNR6IAL3Ac86YXWa21hxuaJBJBlpaEhz3jLDOVnepcCFcYRnfVrZDHFMXhAyIIsFgc8N75r16z9hwnBkVgTuRLJPH3rJbV1tnaBcmFvAsy0+Obl5wi365GmkWwFkS9mt2sLoRBhbY2NjNU3P3D2cMmGosBx5NBKAQ4cvAAWMYh8Q6kS6FJAljxbKgniuAAExAw+JAkCsBmrBVngUFe1/ha1yw1EgHARAAxYgooDbJs/1xDSGArJBbW2DWKVwZgJuzm1tgeslATgXxWrw+/aiotNe2AG49YnrDvotUivwkEdZR8ck0j0zyminoAAWndEr2jxZMfBwoB7JL9wbmOYqZYChKQLoeJT514UzIuj6RxRYsMLK3LljBukO8fMZrSjg1faCjcx5BcZvq2ibB6kI6ZgCjm3BTICigfCxRch1Guqj9jCMy6LD+uMsncEhaY445QIHew4aNMhz0OBBg4FB7BkRfxw40Bn+J3y+jGlrc4bK14BzL9nJs9UcOqjDERzbpjEBCZqAAPFi4mfGxjAUOGFB2AdH8OBwBvK0Cs+GNLBPe7QNHtgWioWgbVPgaDcYkx3LZvRxTnaiy18a+tyTlA0bfIJsiB4zw4D26WwMpY29N7BigK05j5n4zUwOmMnNKLTZQkbnwMK01vG07y3LRtsT2hdtbcJHOG6jAtddiVEm0nsPr7PRC5/9GG1FbhpbcTlh4SY0BIXKhfUbFXiSGGdWDu78Cx94k8ntvcg/Sf9YYGuRJTFO3/a8FOD9B8m/wMNP4+zTNNsTE6zJA1Lq/deRf5z+NH5R7DIZMcFQf2qQlzfzcXpBeNttEyZMuM00t3cN/qX0y93Pb40tio0t0lyXm/Z8t709TwR3YlqAT7uguBqorcX7sAVVqQWplIICuA7BTQhx6f85Y2usyNbTw0g3vNLeIiqomEBxJg15URsboE+V1bUlQGIVBGYCQEZG+b595Rq8+qICuARhFEH8c1AWuzW42o5ZYAKlKrzxBgGBSqAYNuKK4xDYh68pQegmBAZHg9zEjH1AbCyLv387i48pwOLbHER6wHsrmQCEB5R07xsM8KgrIT7A9sJKxPi47wv/oUViIsbfug8zQLO/XbMVwelXFLuhh2XF5uVVN/Lq81oKS6lBYUthJgICaqS2Fh61hylfffUV7vtScvFKcB+j/HMBDQgwhXPXAlxIj7FY+/YnY1ZRgaM+Y3x9fOFeq4/3Uhq/yXeMt7e3j68PNCSiQdOYpfCLj68vNNDo53zhxiz8ydKlS1fR6Kd93wwY6UpuFj9IQWHp75z38yhwhKsk91EBbmY9jQKnLaT3oALNDqQ3+KlAQHnJidsNqK0GASuu4SugyZpTBAENtxt8/1Ycg83uvRK4n96IumTBC8DcPxKsnwFrnQyUl/MCeObvvQAYKC6Z8wIlNSVHHLkGKsBdij5BM8D9K5si2gVuvRMoVBYqMnUESmqqa0wKlFMBuY6AZmuzS+8EFIiugLrm5gWgC2x7J5CJ8AJP18TpC2Rk8AL9NFAGNSd5gSIYBM0WvROgRZ8X8K8BdAQyUMCK3wOJBQHu35rtLwKFXgqMgjPQxYvXbfkMADfsOIFEuA/H7Tj02w8Gmma59B4oUATLwF4xE+JXBvKbcj/V1Pz0GDei3imA0+9jXtyqcv92zX5vqe7I3geD2Hmkdzz0+tHfF0gJwB29k5ceC+ZPG4tOX/Lh11gOr59uDpTz77HqXHOgLektFvo7Zi7WelXVVe6gvyqW6b2HmYz8z/8Y5y/BByucgOrGXAAAAABJRU5ErkJggg==" alt="DeviceMate Logo" class="logo" />
+    <div class="title">
+      <h1>DeviceMate</h1>
+      <p>跨平台设备信息采集工具</p>
+    </div>
+  </div>
+  <div class="content">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>正在采集硬件信息, 请稍候...</p>
+    </div>
+    <div id="result" style="display:none;">
+      <div class="info-list" id="infoList"></div>
+      <div id="usbSection"></div>
+    </div>
+  </div>
+  <div class="footer">
+    <button class="btn" id="refreshBtn" onclick="collect()" disabled>重新采集</button>
+    <button class="btn btn-danger" id="closeBtn" onclick="closeApp()">关闭程序</button>
+    <div class="timestamp" id="timestamp"></div>
+  </div>
+</div>
+
+<div id="sudoModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:28px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h3 style="margin-bottom:16px;color:#2c3e50;">需要 Root 权限</h3>
+    <p style="margin-bottom:12px;font-size:13px;color:#666;">检测到部分硬件信息（设备序列号、硬盘序列号等）需要 Root 权限才能获取，请输入 Root 密码以重新采集。密码仅保存在内存中。</p>
+    <input type="password" id="sudoPassword" placeholder="Root 密码" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:16px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')submitSudo()"/>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" onclick="hideSudoModal()" style="background:#95a5a6;">取消</button>
+      <button class="btn" onclick="submitSudo()" style="background:#2c3e50;">确认并重新采集</button>
+    </div>
+  </div>
+</div>
+<div class="copyright">
+  <p>Copyright © 2026 huangcy@jihualab.ac.cn</p>
+</div>
+
+<div class="toast" id="toast">已复制</div>
+<script>
+const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+const labels = {
+  os_name: "操作系统类型",
+  os_version: "操作系统信息",
+  os_install_date: "操作系统安装日期",
+  device_serial: "设备序列号",
+  hdd_serials: "硬盘序列号",
+  ip_addresses: "IP 地址",
+  mac_addresses: "MAC 地址",
+  // collect_time: "采集时间"
+};
+
+let lastData = null;
+let sudoTried = false;
+
+async function collect() {
+  document.getElementById("loading").style.display = "block";
+  document.getElementById("result").style.display = "none";
+  document.getElementById("refreshBtn").disabled = true;
+  try {
+    const resp = await fetch("/api/collect");
+    const data = await resp.json();
+    lastData = data;
+    renderInfo(data);
+    renderUSB(data.usb_devices || []);
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("result").style.display = "block";
+    document.getElementById("refreshBtn").disabled = false;
+
+    /* Linux 下检测到信息不完整且未尝试过 sudo, 自动弹窗请求密码 */
+    if (!sudoTried && data.os_name === "linux") {
+      if (data.device_serial === "未知" || data.hdd_serials === "未检测到") {
+        sudoTried = true;
+        showSudoModal();
+      }
+    }
+  } catch (e) {
+    document.getElementById("loading").innerHTML = '<p style="color:#e74c3c">采集失败: ' + e.message + "</p>";
+  }
+}
+
+function renderInfo(data) {
+  const list = document.getElementById("infoList");
+  list.innerHTML = "";
+  for (const key of Object.keys(labels)) {
+    const val = data[key] || "—";
+    const item = document.createElement("div");
+    item.className = "info-item";
+    item.innerHTML =
+      '<div class="info-label">' + labels[key] + '</div>' +
+      '<div class="info-value-wrap">' +
+        '<div class="info-value">' + escapeHtml(val) + '</div>' +
+        '<button class="copy-btn" onclick="copyText(this,\'' + val + '\')" title="复制">' + COPY_ICON + '</button>' +
+      '</div>';
+    list.appendChild(item);
+  }
+}
+
+function renderUSB(devices) {
+  const section = document.getElementById("usbSection");
+  let html = '<div class="section-title">USB 存储设备</div>';
+  if (!devices || devices.length === 0) {
+    html += '<div class="usb-empty">未检测到 USB 存储设备</div>';
+  } else {
+    html += '<table class="usb-table"><thead><tr>' +
+      '<th>设备名称 / 型号</th><th>序列号</th><th class="col-action">操作</th>' +
+      '</tr></thead><tbody>';
+    devices.forEach(function(d) {
+      const name = escapeHtml(d.name || d.model || "USB 存储设备");
+      const model = escapeHtml(d.model || d.name || "—");
+      const serial = escapeHtml(d.serial || "—");
+      html += '<tr>' +
+        '<td>' + name + '</td>' +
+        '<td class="col-serial">' + serial + '</td>' +
+        '<td class="col-action"><button class="copy-btn" onclick="copyText(this,\'' + serial + '\')" title="复制">' + COPY_ICON + '</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  section.innerHTML = html;
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(function() {
+    showToast("已复制: " + (text.length > 40 ? text.substring(0, 40) + "..." : text));
+  }).catch(function() {
+    // 降级方案
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); showToast("已复制"); } catch(e) { showToast("复制失败"); }
+    document.body.removeChild(ta);
+  });
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { t.classList.remove("show"); }, 2000);
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function escAttr(s) {
+  return JSON.stringify(s);
+}
+
+function showSudoModal() {
+  document.getElementById("sudoModal").style.display = "flex";
+  document.getElementById("sudoPassword").value = "";
+  document.getElementById("sudoPassword").focus();
+}
+
+function hideSudoModal() {
+  document.getElementById("sudoModal").style.display = "none";
+}
+
+async function submitSudo() {
+  const pwd = document.getElementById("sudoPassword").value;
+  if (!pwd) return;
+  hideSudoModal();
+  showToast("正在使用 Root 权限重新采集...");
+  try {
+    await fetch("/api/sudo", { method: "POST", body: pwd });
+    await collect();
+  } catch (e) {
+    showToast("设置失败: " + e.message);
+  }
+}
+
+function closeApp() {
+  if (!confirm("确定要关闭 DeviceMate 吗?")) return;
+  fetch("/api/shutdown").catch(function() {});
+  showToast("程序已关闭");
+  setTimeout(function() {
+    window.close();
+  }, 500);
+}
+
+window.onload = collect;
+</script>
+</body>
+</html>
