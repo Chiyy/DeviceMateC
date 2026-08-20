@@ -244,8 +244,8 @@ char *get_os_install_date(void) {
    回退: wmic csproduct → PowerShell */
 char *get_device_serial(void) {
     /* 方式1: wmic csproduct 标识号 */
-    out = run_cmd("wmic csproduct get IdentifyingNumber /format:list");
-    serial = parse_wmic_value(out, "IdentifyingNumber");
+    char *out = run_cmd("wmic csproduct get IdentifyingNumber /format:list");
+    char *serial = parse_wmic_value(out, "IdentifyingNumber");
     free(out);
     if (serial && serial[0] != '\0') {
         return serial;
@@ -253,8 +253,8 @@ char *get_device_serial(void) {
     free(serial);
 
     /* 方式2: wmic baseboard 序列号 */
-    char *out = run_cmd("wmic baseboard get SerialNumber /format:list");
-    char *serial = parse_wmic_value(out, "SerialNumber");
+    out = run_cmd("wmic baseboard get SerialNumber /format:list");
+    serial = parse_wmic_value(out, "SerialNumber");
     free(out);
     if (serial && !is_invalid_serial(serial)) {
         return serial;
