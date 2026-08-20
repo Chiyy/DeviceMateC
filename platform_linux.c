@@ -264,16 +264,15 @@ char *get_device_serial(void) {
     const char *sysfs_paths[] = {
         "/sys/class/dmi/id/product_serial",
         "/sys/class/dmi/id/board_serial",
-        "/sys/class/dmi/id/chassis_serial"
     };
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 2; i++) {
         char *s = read_valid_serial(sysfs_paths[i]);
         if (s) return s;
     }
 
     /* d/e/f: dmidecode -s (run_with_sudo: 先无 sudo, 失败用 sudo -S 密码) */
-    const char *dtypes[] = {"system-serial-number", "baseboard-serial-number", "chassis-serial-number"};
-    for (int i = 0; i < 3; i++) {
+    const char *dtypes[] = {"system-serial-number", "baseboard-serial-number"};
+    for (int i = 0; i < 2; i++) {
         char cmd[128];
         snprintf(cmd, sizeof(cmd), "dmidecode -s %s", dtypes[i]);
         char *out = run_with_sudo(cmd);
@@ -293,12 +292,12 @@ char *get_device_serial(void) {
         if (!out) out = strdup("");
         char *copy = strdup(out);
         free(out);
-        const char *keys[] = {"Serial Number:", "Board Serial:", "Chassis Serial:"};
+        const char *keys[] = {"Serial Number:", "Board Serial:"};
         char *saveptr = NULL;
         char *line = strtok_r(copy, "\n", &saveptr);
         while (line) {
             char *t = str_trim(line);
-            for (int k = 0; k < 3; k++) {
+            for (int k = 0; k < 2; k++) {
                 if (str_starts_with(t, keys[k])) {
                     char *val = str_trim(strdup(t + strlen(keys[k])));
                     if (val && val[0] != '\0' && !is_invalid_serial(val)) {

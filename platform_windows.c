@@ -243,20 +243,20 @@ char *get_os_install_date(void) {
    占位符: "To be filled by O.E.M."、"Default string"、"None" 等
    回退: wmic csproduct → PowerShell */
 char *get_device_serial(void) {
-    /* 方式1: wmic baseboard 序列号 */
-    char *out = run_cmd("wmic baseboard get SerialNumber /format:list");
-    char *serial = parse_wmic_value(out, "SerialNumber");
-    free(out);
-    if (serial && !is_invalid_serial(serial)) {
-        return serial;
-    }
-    free(serial);
-
-    /* 方式2: wmic csproduct 标识号 */
+    /* 方式1: wmic csproduct 标识号 */
     out = run_cmd("wmic csproduct get IdentifyingNumber /format:list");
     serial = parse_wmic_value(out, "IdentifyingNumber");
     free(out);
     if (serial && serial[0] != '\0') {
+        return serial;
+    }
+    free(serial);
+
+    /* 方式2: wmic baseboard 序列号 */
+    char *out = run_cmd("wmic baseboard get SerialNumber /format:list");
+    char *serial = parse_wmic_value(out, "SerialNumber");
+    free(out);
+    if (serial && !is_invalid_serial(serial)) {
         return serial;
     }
     free(serial);
