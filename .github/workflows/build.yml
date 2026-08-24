@@ -158,6 +158,9 @@ jobs:
           # 复制已 UPX 压缩的二进制 + 图标 + .desktop 到 AppDir
           cp "${{ matrix.output }}" "$APPDIR/usr/bin/DeviceMate"
           chmod +x "$APPDIR/usr/bin/DeviceMate"
+          # 图标必须放在 AppDir 根目录, 文件名 = Icon 值 (.desktop 里 Icon=DeviceMate)
+          # appimagetool 不认 usr/share/icons/hicolor/..., 它扫根目录
+          cp logo.png "$APPDIR/DeviceMate.png"
           cp logo.png "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png"
 
           # .desktop 必须放在 AppDir 根目录 (appimagetool 要求)
@@ -168,7 +171,7 @@ jobs:
           Name=DeviceMate
           Exec=DeviceMate
           Icon=DeviceMate
-          Categories=Utility;System;
+          Categories=Utility;
           Terminal=false
           EOF
           cp "$APPDIR/DeviceMate.desktop" "$APPDIR/usr/share/applications/DeviceMate.desktop"
