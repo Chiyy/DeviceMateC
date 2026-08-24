@@ -159,7 +159,10 @@ jobs:
           cp "${{ matrix.output }}" "$APPDIR/usr/bin/DeviceMate"
           chmod +x "$APPDIR/usr/bin/DeviceMate"
           cp logo.png "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png"
-          cat > "$APPDIR/usr/share/applications/DeviceMate.desktop" <<EOF
+
+          # .desktop 必须放在 AppDir 根目录 (appimagetool 要求)
+          # 同时复制一份到 usr/share/applications/ 供桌面环境识别图标
+          cat > "$APPDIR/DeviceMate.desktop" <<EOF
           [Desktop Entry]
           Type=Application
           Name=DeviceMate
@@ -168,6 +171,7 @@ jobs:
           Categories=Utility;System;
           Terminal=false
           EOF
+          cp "$APPDIR/DeviceMate.desktop" "$APPDIR/usr/share/applications/DeviceMate.desktop"
 
           # 手写 AppRun (shell 脚本入口)。
           # 不用 linuxdeploy 是因为它会对二进制跑 patchelf+strip, 对 UPX 压缩
