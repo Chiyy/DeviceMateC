@@ -169,20 +169,24 @@ jobs:
           Terminal=false
           EOF
 
+          # 手写 AppRun (shell 脚本入口)。
+          # 不用 linuxdeploy 是因为它会对二进制跑 patchelf+strip, 对 UPX 压缩
+          # 后的 self-decompressing ELF 报 "no section headers" 失败。
+          # 本程序静态链接无依赖, 不需要 linuxdeploy 部署任何东西。
+          cat > "$APPDIR/AppRun" <<EOF
+          #!/bin/sh
+          HERE="\$(dirname "\$(readlink -f "\$0")")"
+          exec "\${HERE}/usr/bin/DeviceMate" "\$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
           # AppImage 工具在 CI/docker 里 FUSE 不可用, 用 extract-and-run 绕过
           export ARCH=x86_64
           export APPIMAGE_EXTRACT_AND_RUN=1
           export APPIMAGETOOL_SKIP_NEEDS_UPX=1
 
-          wget -q -O linuxdeploy.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q -O appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x linuxdeploy.AppImage appimagetool.AppImage
-
-          # linuxdeploy 自动生成 AppRun 入口 + 部署依赖 (本程序静态链接无依赖)
-          ./linuxdeploy.AppImage --appdir "$APPDIR" \
-            --desktop-file "$APPDIR/usr/share/applications/DeviceMate.desktop" \
-            --icon-file "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png" \
-            --executable "$APPDIR/usr/bin/DeviceMate"
+          chmod +x appimagetool.AppImage
 
           ./appimagetool.AppImage "$APPDIR" "DeviceMate-linux.AppImage"
           chmod +x "DeviceMate-linux.AppImage"
