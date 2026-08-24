@@ -3,7 +3,26 @@
 #include "dm.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
+
+/* USB 调试开关: 设置环境变量 DM_DEBUG_USB=1 时, 在 stderr 打印每一步输出长度与解析结果。
+ * 用法: DM_DEBUG_USB=1 ./DeviceMate --once */
+static int usb_debug_enabled(void) {
+    static int v = -1;
+    if (v == -1) v = (getenv("DM_DEBUG_USB") != NULL);
+    return v;
+}
+
+static void usb_dbg(const char *fmt, ...) {
+    if (!usb_debug_enabled()) return;
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[USB] ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+}
 
 /* =====================================================================
  *  platform_darwin.c  -  macOS 平台硬件信息采集 (由 Go 版本移植)
@@ -491,9 +510,10 @@ static void get_disk_info_from_ioreg(const char *disk_id,
 /* 方式1: diskutil list external physical + ioreg */
 static void get_usb_via_diskutil(USBList *list) {
     char *out = run_cmd("diskutil list external physical");
-    if (!out) return;
+    if (!out) { usb_dbg("diskutil: 无输出"); return; }
     int count = 0;
     char **ids = parse_external_disk_ids(out, &count);
+    usb_dbg("diskutil: out_len=%zu, ids=%d", strlen(out), count);
     free(out);
 
     for (int i = 0; i < count; i++) {
@@ -517,7 +537,8 @@ static void get_usb_via_ioreg(USBList *list) {
         free(out);
         out = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice");
     }
-    if (!out) return;
+    if (!out) { usb_dbg("ioreg: 无输出"); return; }
+    usb_dbg("ioreg: out_len=%zu", strlen(out));
 
     int n = 0;
     char **lines = split_lines_copy(out, &n);
@@ -533,6 +554,7 @@ static void get_usb_via_ioreg(USBList *list) {
             /* USB 设备才添加 (有 USB Product 属性), 允许无序列号 */
             if (in_device && cur_is_usb && (cur_name || cur_serial || cur_vendor)) {
                 const char *name = pick_name(cur_name, cur_vendor);
+                usb_dbg("ioreg push: name=%s, serial=%s", name, cur_serial ? cur_serial : "");
                 usb_list_push(list, name, cur_name ? cur_name : "", cur_serial ? cur_serial : "");
             }
             free(cur_name);   cur_name = NULL;
@@ -540,6 +562,8 @@ static void get_usb_via_ioreg(USBList *list) {
             free(cur_vendor); cur_vendor = NULL;
             cur_is_usb = 0;
             in_device = 1;
+            /* 类路径含 "USB" (IOUSBHostDevice / IOUSBInterface 等) 也视为 USB 设备 */
+            if (str_contains(line, "USB")) cur_is_usb = 1;
             continue;
         }
         if (!in_device) continue;
@@ -609,7 +633,8 @@ static void spusbd_free(SPUSBDev *d) {
 
 static void get_usb_via_system_profiler(USBList *list) {
     char *out = run_cmd_timeout(20, "system_profiler SPUSBDataType");
-    if (!out) return;
+    if (!out) { usb_dbg("system_profiler: 无输出"); return; }
+    usb_dbg("system_profiler: out_len=%zu", strlen(out));
     int n = 0;
     char **lines = split_lines_copy(out, &n);
 
@@ -645,9 +670,10 @@ static void get_usb_via_system_profiler(USBList *list) {
                            str_starts_with(trimmed, "Hub"));
 
         if (ends_with_colon && !is_property) {
-            /* 新设备节点 (同层或更上层) -> flush 上一个 */
-            if (device_indent == -1 || indent <= device_indent) {
-                /* 仅保留存储设备 (有 BSD Name 或 Mass Storage), 允许无序列号 */
+            /* 任何以 ':' 结尾的非属性行都视为设备节点 -> flush 上一个
+             * (旧逻辑仅在 indent<=device_indent 时 flush, 导致嵌套子设备
+             *  被 USB Hub 遮蔽而漏掉; 改为每次进入新节点都 flush) */
+            if (device_indent != -1) {
                 if (cur.is_storage) {
                     if (all_count >= all_cap) { all_cap = all_cap ? all_cap * 2 : 8; all = (SPUSBDev *)realloc(all, (size_t)all_cap * sizeof(SPUSBDev)); }
                     all[all_count++] = cur;
@@ -655,18 +681,16 @@ static void get_usb_via_system_profiler(USBList *list) {
                 } else {
                     spusbd_free(&cur);
                 }
-                device_indent = indent;
             }
-            if (indent == device_indent) {
-                /* 记录设备名 (去掉末尾 ':') */
-                size_t nl = tlen;
-                if (nl > 0 && trimmed[nl - 1] == ':') nl--;
-                char *nm = (char *)malloc(nl + 1);
-                memcpy(nm, trimmed, nl);
-                nm[nl] = '\0';
-                free(cur.name);
-                cur.name = nm;
-            }
+            device_indent = indent;
+            /* 记录设备名 (去掉末尾 ':') */
+            size_t nl = tlen;
+            if (nl > 0 && trimmed[nl - 1] == ':') nl--;
+            char *nm = (char *)malloc(nl + 1);
+            memcpy(nm, trimmed, nl);
+            nm[nl] = '\0';
+            free(cur.name);
+            cur.name = nm;
             continue;
         }
 
@@ -702,6 +726,9 @@ static void get_usb_via_system_profiler(USBList *list) {
                     cur.is_storage = 1;
                 } else if (str_starts_with(kt, "Mass Storage")) {
                     cur.is_storage = 1;
+                } else if (str_starts_with(kt, "Removable Media")) {
+                    /* 可移动介质也是 USB 存储设备的强标志 */
+                    cur.is_storage = 1;
                 }
                 free(key);
                 free(val);
@@ -719,11 +746,13 @@ static void get_usb_via_system_profiler(USBList *list) {
     }
 
     /* 构造 USBDevice: name = product > manufacturer > name > 默认 */
+    usb_dbg("system_profiler: all_count=%d", all_count);
     for (int i = 0; i < all_count; i++) {
         const char *name = all[i].product;
         if (!name || !name[0]) name = all[i].manufacturer;
         if (!name || !name[0]) name = all[i].name;
         if (!name || !name[0]) name = "USB 存储设备";
+        usb_dbg("system_profiler push: name=%s, serial=%s", name, all[i].serial ? all[i].serial : "");
         usb_list_push(list, name,
                       all[i].product ? all[i].product : "",
                       all[i].serial ? all[i].serial : "");
@@ -741,6 +770,7 @@ void get_usb_devices(USBDevice **devices, int *count) {
 
     /* 方式1: diskutil + ioreg (最可靠) */
     get_usb_via_diskutil(&list);
+    usb_dbg("方式1 diskutil: %d 个", list.count);
     if (list.count > 0) {
         *devices = list.items;
         *count = list.count;
@@ -749,6 +779,7 @@ void get_usb_devices(USBDevice **devices, int *count) {
 
     /* 方式2: ioreg IOBlockStorageDevice (IOService 平面) */
     get_usb_via_ioreg(&list);
+    usb_dbg("方式2 ioreg: %d 个", list.count);
     if (list.count > 0) {
         *devices = list.items;
         *count = list.count;
@@ -757,6 +788,7 @@ void get_usb_devices(USBDevice **devices, int *count) {
 
     /* 方式3: system_profiler SPUSBDataType (兼容) */
     get_usb_via_system_profiler(&list);
+    usb_dbg("方式3 system_profiler: %d 个", list.count);
 
     if (list.count > 0) {
         *devices = list.items;

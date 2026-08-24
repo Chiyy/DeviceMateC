@@ -145,11 +145,55 @@ jobs:
           zip -r -q "${APP_NAME}.zip" "$APP_NAME"
           echo "Created $APP_NAME and ${APP_NAME}.zip"
 
+      - name: Build AppImage (Linux)
+        if: matrix.os_name == 'linux'
+        shell: bash
+        run: |
+          set -e
+          APPDIR=AppDir
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin" \
+                   "$APPDIR/usr/share/applications" \
+                   "$APPDIR/usr/share/icons/hicolor/128x128/apps"
+          # 复制已 UPX 压缩的二进制 + 图标 + .desktop 到 AppDir
+          cp "${{ matrix.output }}" "$APPDIR/usr/bin/DeviceMate"
+          chmod +x "$APPDIR/usr/bin/DeviceMate"
+          cp logo.png "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png"
+          cat > "$APPDIR/usr/share/applications/DeviceMate.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=DeviceMate
+          Exec=DeviceMate
+          Icon=DeviceMate
+          Categories=Utility;System;
+          Terminal=false
+          EOF
+
+          # AppImage 工具在 CI/docker 里 FUSE 不可用, 用 extract-and-run 绕过
+          export ARCH=x86_64
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export APPIMAGETOOL_SKIP_NEEDS_UPX=1
+
+          wget -q -O linuxdeploy.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x linuxdeploy.AppImage appimagetool.AppImage
+
+          # linuxdeploy 自动生成 AppRun 入口 + 部署依赖 (本程序静态链接无依赖)
+          ./linuxdeploy.AppImage --appdir "$APPDIR" \
+            --desktop-file "$APPDIR/usr/share/applications/DeviceMate.desktop" \
+            --icon-file "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png" \
+            --executable "$APPDIR/usr/bin/DeviceMate"
+
+          ./appimagetool.AppImage "$APPDIR" "DeviceMate-linux.AppImage"
+          chmod +x "DeviceMate-linux.AppImage"
+          ls -lh "DeviceMate-linux.AppImage"
+
       - name: Set execute permissions (non-Windows)
         shell: bash
         run: |
           if [ "${{ matrix.os_name }}" != "windows" ]; then
             chmod +x "${{ matrix.output }}" 2>/dev/null || true
+            chmod +x "DeviceMate-linux.AppImage" 2>/dev/null || true
           fi
 
       - name: Upload artifact
@@ -159,6 +203,7 @@ jobs:
           path: |
             ${{ matrix.output }}
             ${{ matrix.output }}.app.zip
+            DeviceMate-linux.AppImage
 
   release:
     name: Create Release
@@ -176,6 +221,7 @@ jobs:
           mkdir -p release
           find dist -name "DeviceMate-windows.exe" -exec cp {} release/ \;
           find dist -name "DeviceMate-linux" -exec cp {} release/ \;
+          find dist -name "DeviceMate-linux.AppImage" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos.app.zip" -exec cp {} release/ \;
           ls -lh release/
@@ -193,13 +239,14 @@ jobs:
 
           ### 下载
           - Windows: \`DeviceMate-windows.exe\`
-          - Linux (amd64): \`DeviceMate-linux\`
+          - Linux (amd64): \`DeviceMate-linux\` (命令行) 或 \`DeviceMate-linux.AppImage\` (双击运行带图标)
           - macOS (Universal): \`DeviceMate-macos\` 或 \`DeviceMate-macos.app.zip\` (双击运行不弹终端)
 
           ### 使用方法
           \`\`\`
           # Windows: 双击 exe 文件
-          # Linux: ./DeviceMate-linux
+          # Linux: 命令行 ./DeviceMate-linux 或 双击 DeviceMate-linux.AppImage
+          #   AppImage 首次运行: 右键 → 属性 → 允许作为程序执行 (或 chmod +x)
           # macOS: 解压 .app.zip 后双击 .app
           \`\`\`
 
@@ -220,6 +267,7 @@ jobs:
           files: |
             release/DeviceMate-windows.exe
             release/DeviceMate-linux
+            release/DeviceMate-linux.AppImage
             release/DeviceMate-macos
             release/DeviceMate-macos.app.zip
           fail_on_unmatched_files: false
