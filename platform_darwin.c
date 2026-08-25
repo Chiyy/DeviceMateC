@@ -926,7 +926,7 @@ void debug_usb_devices(void) {
     g_debug_usb = 1;
 
     /* 1. diskutil list external physical */
-    printf("\n[1/4] diskutil list external physical\n");
+    printf("\n[1/5] diskutil list external physical\n");
     {
         const char *cmd = "diskutil list external physical";
         char *out = run_cmd(cmd);
@@ -943,42 +943,59 @@ void debug_usb_devices(void) {
     }
 
     /* 2. ioreg -r -d 5 -w 0 -c IOBlockStorageDevice */
-    printf("\n[2/4] ioreg -r -d 5 -w 0 -c IOBlockStorageDevice\n");
+    printf("\n[2/5] ioreg -r -d 5 -w 0 -c IOBlockStorageDevice\n");
     {
         const char *cmd = "ioreg -r -d 5 -w 0 -c IOBlockStorageDevice";
         char *out = run_cmd(cmd);
         if (out && out[0]) {
             size_t len = strlen(out);
-            size_t show = len > 2000 ? 2000 : len;
+            size_t show = len > 5000 ? 5000 : len;
             printf("输出 (%zu 字节, 显示前 %zu):\n", len, show);
             printf("%.*s\n", (int)show, out);
-            if (len > 2000) printf("... (省略 %zu 字节)\n", len - 2000);
+            if (len > 5000) printf("... (省略 %zu 字节)\n", len - 5000);
         } else {
             printf("(无输出)\n");
         }
         free(out);
     }
 
-    /* 3. system_profiler SPUSBDataType */
-    printf("\n[3/4] system_profiler SPUSBDataType\n");
+    /* 3. ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice (USB 设备树, 含 USB Serial Number) */
+    printf("\n[3/5] ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice\n");
+    {
+        const char *cmd = "ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice";
+        char *out = run_cmd(cmd);
+        if (out && out[0]) {
+            size_t len = strlen(out);
+            size_t show = len > 8000 ? 8000 : len;
+            printf("输出 (%zu 字节, 显示前 %zu):\n", len, show);
+            printf("%.*s\n", (int)show, out);
+            if (len > 8000) printf("... (省略 %zu 字节)\n", len - 8000);
+        } else {
+            printf("(无输出)\n");
+        }
+        free(out);
+    }
+
+    /* 4. system_profiler SPUSBDataType */
+    printf("\n[4/5] system_profiler SPUSBDataType\n");
     {
         const char *cmd = "system_profiler SPUSBDataType";
         char *out = run_cmd_timeout(20, cmd);
         if (out && out[0]) {
             size_t len = strlen(out);
-            size_t show = len > 2000 ? 2000 : len;
+            size_t show = len > 5000 ? 5000 : len;
             printf("输出 (%zu 字节, 显示前 %zu):\n", len, show);
             printf("%.*s\n", (int)show, out);
-            if (len > 2000) printf("... (省略 %zu 字节)\n", len - 2000);
+            if (len > 5000) printf("... (省略 %zu 字节)\n", len - 5000);
         } else {
             printf("(无输出)\n");
         }
         free(out);
     }
 
-    /* 4. 对每个检测到的外部磁盘执行 diskutil info, 显示实际协议/名称等
+    /* 5. 对每个检测到的外部磁盘执行 diskutil info, 显示实际协议/名称等
      * 这是关键诊断: 若 Protocol != USB, 该磁盘不会被加入 USB 列表 */
-    printf("\n[4/4] diskutil info <disk> (每个外部磁盘)\n");
+    printf("\n[5/5] diskutil info <disk> (每个外部磁盘)\n");
     {
         const char *cmd = "diskutil list external physical";
         char *out = run_cmd(cmd);
@@ -1039,8 +1056,10 @@ void debug_usb_devices(void) {
     } else {
         printf("  诊断完成: 未检测到 USB 存储设备\n");
         printf("  建议:\n");
-        printf("    1. 查看 [4/4] 输出, 确认外部磁盘的 Protocol 是否为 USB\n");
+        printf("    1. 查看 [5/5] 输出, 确认外部磁盘的 Protocol 是否为 USB\n");
         printf("       (SATA/Virtual/PCI 等协议的磁盘会被跳过, 这是预期行为)\n");
+        printf("    1b. 查看 [3/5] 输出, 确认 USB 设备树中是否有 USB Serial Number 属性\n");
+        printf("        (部分廉价 USB 设备不暴露序列号, 这是设备限制非代码问题)\n");
         printf("    2. 确认 USB 存储设备已正确插入\n");
         printf("    3. 在「磁盘工具」中查看设备是否被识别\n");
         printf("    4. 在「系统信息」-> USB 中查看设备树\n");
