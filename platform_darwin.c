@@ -598,6 +598,54 @@ static void get_disk_info_from_ioreg(const char *disk_id,
     *out_vendor = cur_vendor;
 }
 
+/* 从 diskutil info <disk> 输出中提取指定字段值 (如 "Protocol", "Device Name")。
+ * 返回 malloc 的新串, 找不到返回 NULL。 */
+static char *diskutil_info_get(const char *disk_id, const char *key) {
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "diskutil info %s 2>&1", disk_id);
+    char *out = run_cmd(cmd);
+    if (!out) return NULL;
+
+    char needle[64];
+    snprintf(needle, sizeof(needle), "%s:", key);
+    size_t nlen = strlen(needle);
+
+    int n = 0;
+    char **lines = split_lines_copy(out, &n);
+    char *result = NULL;
+    for (int i = 0; i < n; i++) {
+        char *line = str_trim(lines[i]);
+        /* 跳过前导空白后, 行应以 "Protocol:" 等开头 */
+        if (strncmp(line, needle, nlen) == 0) {
+            const char *p = line + nlen;
+            while (*p == ' ' || *p == '\t') p++;
+            result = strdup(p);
+            /* 去尾空白 */
+            size_t rlen = strlen(result);
+            while (rlen > 0 && (result[rlen - 1] == ' ' || result[rlen - 1] == '\t' ||
+                                result[rlen - 1] == '\r')) {
+                result[--rlen] = '\0';
+            }
+            break;
+        }
+    }
+    free_lines(lines, n);
+    free(out);
+    return result;
+}
+
+/* 不区分大小写比较字符串 (POSIX strcasecmp 的便携替代) */
+static int strieq(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    while (*a && *b) {
+        char ca = *a++, cb = *b++;
+        if (ca >= 'a' && ca <= 'z') ca -= 32;
+        if (cb >= 'a' && cb <= 'z') cb -= 32;
+        if (ca != cb) return 0;
+    }
+    return *a == '\0' && *b == '\0';
+}
+
 /* 方式1: diskutil list external physical + ioreg (主路径, 快速) */
 static void detect_usb_via_diskutil(USBList *list) {
     /* 2>&1 合并 stderr 到 stdout, 便于捕获权限/错误信息 */
@@ -612,10 +660,30 @@ static void detect_usb_via_diskutil(USBList *list) {
     free(out);
 
     for (int i = 0; i < count; i++) {
+        /* 用 diskutil info 验证 Protocol=USB, 过滤 Thunderbolt/SD/虚拟磁盘等
+         * "external, physical" 不等于 USB, 必须显式校验协议 */
+        char *protocol = diskutil_info_get(ids[i], "Protocol");
+        usb_dbg("disk %s: protocol=%s", ids[i], protocol ? protocol : "(未知)");
+        if (protocol && !strieq(protocol, "USB")) {
+            usb_dbg_dev("跳过(非USB协议)", "", ids[i], protocol);
+            free(protocol);
+            free(ids[i]);
+            continue;
+        }
+        free(protocol);
+
         char *serial = NULL, *model = NULL, *vendor = NULL;
         get_disk_info_from_ioreg(ids[i], &serial, &model, &vendor);
-        /* diskutil 确认是外部物理磁盘 → 必定为 USB 存储设备, 一律添加
-         * (即使 ioreg 未取到序列号/型号, diskutil 的 external physical 过滤已足够可靠) */
+        /* diskutil info 提供 Device Name 作为 model 兜底 (ioreg 可能查不到) */
+        if (!model) {
+            char *dev_name = diskutil_info_get(ids[i], "Device Name");
+            if (dev_name && dev_name[0] && !strieq(dev_name, "Unknown") &&
+                !strieq(dev_name, "Disk")) {
+                model = dev_name;
+            } else {
+                free(dev_name);
+            }
+        }
         const char *name = pick_name(model, vendor);
         if (serial || model || vendor) {
             usb_dbg_dev("添加", name, serial, ids[i]);
@@ -858,7 +926,7 @@ void debug_usb_devices(void) {
     g_debug_usb = 1;
 
     /* 1. diskutil list external physical */
-    printf("\n[1/3] diskutil list external physical\n");
+    printf("\n[1/4] diskutil list external physical\n");
     {
         const char *cmd = "diskutil list external physical";
         char *out = run_cmd(cmd);
@@ -875,7 +943,7 @@ void debug_usb_devices(void) {
     }
 
     /* 2. ioreg -r -d 5 -w 0 -c IOBlockStorageDevice */
-    printf("\n[2/3] ioreg -r -d 5 -w 0 -c IOBlockStorageDevice\n");
+    printf("\n[2/4] ioreg -r -d 5 -w 0 -c IOBlockStorageDevice\n");
     {
         const char *cmd = "ioreg -r -d 5 -w 0 -c IOBlockStorageDevice";
         char *out = run_cmd(cmd);
@@ -892,7 +960,7 @@ void debug_usb_devices(void) {
     }
 
     /* 3. system_profiler SPUSBDataType */
-    printf("\n[3/3] system_profiler SPUSBDataType\n");
+    printf("\n[3/4] system_profiler SPUSBDataType\n");
     {
         const char *cmd = "system_profiler SPUSBDataType";
         char *out = run_cmd_timeout(20, cmd);
@@ -904,6 +972,42 @@ void debug_usb_devices(void) {
             if (len > 2000) printf("... (省略 %zu 字节)\n", len - 2000);
         } else {
             printf("(无输出)\n");
+        }
+        free(out);
+    }
+
+    /* 4. 对每个检测到的外部磁盘执行 diskutil info, 显示实际协议/名称等
+     * 这是关键诊断: 若 Protocol != USB, 该磁盘不会被加入 USB 列表 */
+    printf("\n[4/4] diskutil info <disk> (每个外部磁盘)\n");
+    {
+        const char *cmd = "diskutil list external physical";
+        char *out = run_cmd(cmd);
+        if (out && out[0]) {
+            int cnt = 0;
+            char **ids = parse_external_disk_ids(out, &cnt);
+            if (cnt == 0) {
+                printf("(未检测到外部物理磁盘)\n");
+            }
+            for (int i = 0; i < cnt; i++) {
+                char info_cmd[128];
+                snprintf(info_cmd, sizeof(info_cmd), "diskutil info %s 2>&1", ids[i]);
+                char *info = run_cmd(info_cmd);
+                printf("\n--- disk %s ---\n", ids[i]);
+                if (info && info[0]) {
+                    /* 显示完整输出 (一般 < 2KB) */
+                    size_t len = strlen(info);
+                    size_t show = len > 3000 ? 3000 : len;
+                    printf("%.*s\n", (int)show, info);
+                    if (len > 3000) printf("... (省略 %zu 字节)\n", len - 3000);
+                } else {
+                    printf("(无输出)\n");
+                }
+                free(info);
+                free(ids[i]);
+            }
+            free(ids);
+        } else {
+            printf("(diskutil list external physical 无输出)\n");
         }
         free(out);
     }
@@ -935,10 +1039,14 @@ void debug_usb_devices(void) {
     } else {
         printf("  诊断完成: 未检测到 USB 存储设备\n");
         printf("  建议:\n");
-        printf("    1. 确认 USB 存储设备已正确插入\n");
-        printf("    2. 在「磁盘工具」中查看设备是否被识别\n");
-        printf("    3. 在「系统信息」-> USB 中查看设备树\n");
-        printf("    4. 尝试重新插拔 USB 设备或更换 USB 端口\n");
+        printf("    1. 查看 [4/4] 输出, 确认外部磁盘的 Protocol 是否为 USB\n");
+        printf("       (SATA/Virtual/PCI 等协议的磁盘会被跳过, 这是预期行为)\n");
+        printf("    2. 确认 USB 存储设备已正确插入\n");
+        printf("    3. 在「磁盘工具」中查看设备是否被识别\n");
+        printf("    4. 在「系统信息」-> USB 中查看设备树\n");
+        printf("    5. 尝试重新插拔 USB 设备或更换 USB 端口\n");
+        printf("    6. 虚拟机环境 (VMware/VirtualBox) 通常无真实 USB 控制器,\n");
+        printf("       需通过 USB 直通方式将宿主机 USB 设备映射进虚拟机\n");
     }
     printf("========================================\n");
 
