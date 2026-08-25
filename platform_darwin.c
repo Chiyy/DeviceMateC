@@ -431,9 +431,12 @@ static char **parse_external_disk_ids(const char *out, int *count) {
         char *end = p;
         while (*end && *end != ' ' && *end != '\t') end++;
         size_t len = (size_t)(end - p);
-        int has_s = 0;                            /* 含 's' 视为分区, 排除 */
-        for (size_t k = 0; k < len; k++) if (p[k] == 's') { has_s = 1; break; }
-        if (!has_s && len > 0) {
+        if (len <= 4) continue;                   /* 至少 "diskN" */
+        /* BSD Name 格式: 整盘 "diskN", 分区 "diskNsM"
+         * 跳过 "disk" 前缀后, 若含 's' 则为分区, 排除 */
+        int has_s = 0;
+        for (size_t k = 4; k < len; k++) if (p[k] == 's') { has_s = 1; break; }
+        if (!has_s) {
             char *id = (char *)malloc(len + 1);
             memcpy(id, p, len);
             id[len] = '\0';
@@ -464,7 +467,7 @@ static void get_disk_info_from_ioreg(const char *disk_id,
     snprintf(bsd_match, sizeof(bsd_match), "\"BSD Name\" = \"%s", disk_id);
 
     /* 主路径: ioreg -c IOBlockStorageDevice (仅列出块存储设备, 远快于全量 dump) */
-    char *out = run_cmd("ioreg -r -d 5 -w 0 -c IOBlockStorageDevice");
+    char *out = run_cmd("ioreg -r -d 5 -w 0 -c IOBlockStorageDevice 2>&1");
     usb_dbg_cmd("ioreg -r -d 5 -w 0 -c IOBlockStorageDevice", out);
     if (out) {
         int n = 0;
@@ -512,7 +515,7 @@ static void get_disk_info_from_ioreg(const char *disk_id,
 
     /* 备选路径: ioreg -c IOUSBHostDevice (USB 设备树, 子节点含 BSD Name) */
     if (!cur_serial) {
-        char *out2 = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice");
+        char *out2 = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice 2>&1");
         usb_dbg_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice", out2);
         if (out2) {
             int n = 0;
@@ -564,7 +567,8 @@ static void get_disk_info_from_ioreg(const char *disk_id,
 
 /* 方式1: diskutil list external physical + ioreg (主路径, 快速) */
 static void detect_usb_via_diskutil(USBList *list) {
-    const char *cmd = "diskutil list external physical";
+    /* 2>&1 合并 stderr 到 stdout, 便于捕获权限/错误信息 */
+    const char *cmd = "diskutil list external physical 2>&1";
     char *out = run_cmd(cmd);
     if (!out) { usb_dbg("%s: 无输出", cmd); return; }
     usb_dbg_cmd(cmd, out);
@@ -620,7 +624,8 @@ static void spusbd_free(SPUSBDev *d) {
 }
 
 static void detect_usb_via_system_profiler(USBList *list) {
-    const char *cmd = "system_profiler SPUSBDataType";
+    /* 2>&1 合并 stderr 到 stdout, 便于捕获权限/错误信息 (popen 仅捕获 stdout) */
+    const char *cmd = "system_profiler SPUSBDataType 2>&1";
     char *out = run_cmd_timeout(20, cmd);
     if (!out) { usb_dbg("%s: 无输出", cmd); return; }
     usb_dbg_cmd(cmd, out);
