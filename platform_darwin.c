@@ -412,7 +412,8 @@ static char **parse_external_disk_ids(const char *out, int *count) {
 }
 
 /* 5b. 通过 ioreg 查找指定磁盘的 序列号/型号/厂商 (匹配 BSD Name)。
- *     移植自 Go getDiskInfoFromIoreg, 含 -n diskID 备选路径。
+ *     主路径: ioreg -c IOBlockStorageDevice (仅块存储设备, 快速)
+ *     备选路径: ioreg -c IOUSBHostDevice (USB 设备树, 含子节点 BSD Name)
  *     返回值均通过 out_* 以 malloc 新串返回 (可能为 NULL)。 */
 static void get_disk_info_from_ioreg(const char *disk_id,
                                      char **out_serial,
@@ -427,8 +428,8 @@ static void get_disk_info_from_ioreg(const char *disk_id,
     char bsd_match[80];
     snprintf(bsd_match, sizeof(bsd_match), "\"BSD Name\" = \"%s", disk_id);
 
-    /* 主路径: ioreg -r -d 10 -w 0 -l */
-    char *out = run_cmd("ioreg -r -d 10 -w 0 -l");
+    /* 主路径: ioreg -c IOBlockStorageDevice (仅列出块存储设备, 远快于全量 dump) */
+    char *out = run_cmd("ioreg -r -d 5 -w 0 -c IOBlockStorageDevice");
     if (out) {
         int n = 0;
         char **lines = split_lines_copy(out, &n);
@@ -473,27 +474,44 @@ static void get_disk_info_from_ioreg(const char *disk_id,
         free(out);
     }
 
-    /* 备选路径: ioreg -n diskID (按名称定位) */
+    /* 备选路径: ioreg -c IOUSBHostDevice (USB 设备树, 子节点含 BSD Name) */
     if (!cur_serial) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "ioreg -r -d 10 -w 0 -l -n %s", disk_id);
-        char *out2 = run_cmd(cmd);
+        char *out2 = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice");
         if (out2) {
             int n = 0;
             char **lines = split_lines_copy(out2, &n);
+            int found_disk = 0;
             for (int i = 0; i < n; i++) {
                 char *line = str_trim(lines[i]);
+
+                if (str_contains(line, bsd_match)) found_disk = 1;
+
+                if (str_contains(line, "+-o ") || str_contains(line, "\\-o ")) {
+                    if (found_disk && (cur_serial || cur_model)) break;
+                    if (found_disk) {
+                        free(cur_serial); cur_serial = NULL;
+                        free(cur_model);   cur_model = NULL;
+                        free(cur_vendor);  cur_vendor = NULL;
+                    }
+                    continue;
+                }
+                if (!found_disk) continue;
+
                 if (str_contains(line, "\"device-serial-number\"")) {
                     char *v = ioreg_extract_value(line, "device-serial-number");
-                    if (v && v[0] && strcmp(v, "None") != 0) { free(cur_serial); cur_serial = v; break; }
-                    free(v);
-                }
-            }
-            for (int i = 0; i < n && !cur_model; i++) {
-                char *line = str_trim(lines[i]);
-                if (str_contains(line, "\"device-model\"")) {
+                    if (v && v[0] && strcmp(v, "None") != 0) { free(cur_serial); cur_serial = v; }
+                    else free(v);
+                } else if (str_contains(line, "\"device-model\"") ||
+                           str_contains(line, "\"USB Product Name\"")) {
                     char *v = ioreg_extract_value(line, "device-model");
-                    if (v && v[0]) { cur_model = v; }
+                    if (!v) v = ioreg_extract_value(line, "USB Product Name");
+                    if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_model); cur_model = v; }
+                    else free(v);
+                } else if (str_contains(line, "\"device-vendor\"") ||
+                           str_contains(line, "\"USB Product Vendor\"")) {
+                    char *v = ioreg_extract_value(line, "device-vendor");
+                    if (!v) v = ioreg_extract_value(line, "USB Product Vendor");
+                    if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_vendor); cur_vendor = v; }
                     else free(v);
                 }
             }
@@ -530,7 +548,10 @@ static void get_usb_via_diskutil(USBList *list) {
     free(ids);
 }
 
-/* 方式2: ioreg IOBlockStorageDevice (IOService 平面), 解析设备树 */
+/* 方式2: ioreg IOBlockStorageDevice (IOService 平面), 解析设备树
+ * IOBlockStorageDevice 节点不含 "USB" 关键字, 也没有 "USB Product Name" 属性,
+ * 因此不能仅靠 cur_is_usb 判定; 需要检查 removable / Physical Interconnect / BSD Name
+ * 来区分 USB 可移动存储与内置硬盘。 */
 static void get_usb_via_ioreg(USBList *list) {
     char *out = run_cmd("ioreg -r -d 5 -w 0 -l -c IOBlockStorageDevice");
     if (!out || !out[0]) {
@@ -543,7 +564,9 @@ static void get_usb_via_ioreg(USBList *list) {
     int n = 0;
     char **lines = split_lines_copy(out, &n);
     char *cur_name = NULL, *cur_serial = NULL, *cur_vendor = NULL;
-    int cur_is_usb = 0;
+    int cur_is_usb = 0;          /* 节点类名含 "USB" 或有 USB 专有属性 */
+    int cur_is_removable = 0;    /* 有 removable/ejectable = YES */
+    int cur_has_bsd = 0;         /* 有 "BSD Name" (存储设备标志) */
     int in_device = 0;
 
     for (int i = 0; i < n; i++) {
@@ -551,8 +574,10 @@ static void get_usb_via_ioreg(USBList *list) {
 
         /* 进入新设备节点: 先 flush 上一个 */
         if (str_contains(line, "+-o ") || str_contains(line, "\\-o ")) {
-            /* USB 设备才添加 (有 USB Product 属性), 允许无序列号 */
-            if (in_device && cur_is_usb && (cur_name || cur_serial || cur_vendor)) {
+            /* 推送条件: 是 USB 设备或可移动存储, 且有 BSD Name (排除键鼠等非存储 USB 设备) */
+            int should_push = (cur_is_usb || cur_is_removable) && cur_has_bsd &&
+                              (cur_name || cur_serial || cur_vendor);
+            if (in_device && should_push) {
                 const char *name = pick_name(cur_name, cur_vendor);
                 usb_dbg("ioreg push: name=%s, serial=%s", name, cur_serial ? cur_serial : "");
                 usb_list_push(list, name, cur_name ? cur_name : "", cur_serial ? cur_serial : "");
@@ -561,6 +586,8 @@ static void get_usb_via_ioreg(USBList *list) {
             free(cur_serial); cur_serial = NULL;
             free(cur_vendor); cur_vendor = NULL;
             cur_is_usb = 0;
+            cur_is_removable = 0;
+            cur_has_bsd = 0;
             in_device = 1;
             /* 类路径含 "USB" (IOUSBHostDevice / IOUSBInterface 等) 也视为 USB 设备 */
             if (str_contains(line, "USB")) cur_is_usb = 1;
@@ -591,13 +618,31 @@ static void get_usb_via_ioreg(USBList *list) {
             char *v = ioreg_extract_value(line, "device-vendor");
             if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_vendor); cur_vendor = v; }
             else free(v);
+        } else if (str_contains(line, "\"BSD Name\"")) {
+            /* 有 BSD Name 说明是磁盘/存储设备 */
+            cur_has_bsd = 1;
+        } else if (str_contains(line, "removable") || str_contains(line, "ejectable")) {
+            /* removable/ejectable = YES 表示可移动介质 (USB 存储/SD 卡等) */
+            if (str_contains(line, "YES") || str_contains(line, "true") || str_contains(line, "Yes")) {
+                cur_is_removable = 1;
+            }
+        } else if (str_contains(line, "Physical Interconnect")) {
+            /* Physical Interconnect = USB 确认是 USB 连接 */
+            if (str_contains(line, "USB")) {
+                cur_is_usb = 1;
+                cur_has_bsd = 1;  /* 有此属性的块设备必然是存储设备 */
+            }
         }
     }
 
     /* flush 最后一个设备 */
-    if (in_device && cur_is_usb && (cur_name || cur_serial || cur_vendor)) {
-        const char *name = pick_name(cur_name, cur_vendor);
-        usb_list_push(list, name, cur_name ? cur_name : "", cur_serial ? cur_serial : "");
+    {
+        int should_push = (cur_is_usb || cur_is_removable) && cur_has_bsd &&
+                          (cur_name || cur_serial || cur_vendor);
+        if (in_device && should_push) {
+            const char *name = pick_name(cur_name, cur_vendor);
+            usb_list_push(list, name, cur_name ? cur_name : "", cur_serial ? cur_serial : "");
+        }
     }
     free(cur_name);
     free(cur_serial);
@@ -655,7 +700,8 @@ static void get_usb_via_system_profiler(USBList *list) {
         size_t tlen = strlen(trimmed);
         int ends_with_colon = (tlen > 0 && trimmed[tlen - 1] == ':');
 
-        /* 判断是否为属性行 (以已知属性前缀开头) */
+        /* 判断是否为属性行 (以已知属性前缀开头)
+         * 防止以 ':' 结尾的属性行被误判为设备节点 */
         int is_property = (str_starts_with(trimmed, "Serial Number") ||
                            str_starts_with(trimmed, "Manufacturer") ||
                            str_starts_with(trimmed, "Product") ||
@@ -667,7 +713,24 @@ static void get_usb_via_system_profiler(USBList *list) {
                            str_starts_with(trimmed, "BSD") ||
                            str_starts_with(trimmed, "Capacity") ||
                            str_starts_with(trimmed, "Mass Storage") ||
-                           str_starts_with(trimmed, "Hub"));
+                           str_starts_with(trimmed, "Removable") ||
+                           str_starts_with(trimmed, "Ejectable") ||
+                           str_starts_with(trimmed, "Hub") ||
+                           str_starts_with(trimmed, "Location") ||
+                           str_starts_with(trimmed, "Bus") ||
+                           str_starts_with(trimmed, "PCI") ||
+                           str_starts_with(trimmed, "Host Controller") ||
+                           str_starts_with(trimmed, "Root") ||
+                           str_starts_with(trimmed, "Companion") ||
+                           str_starts_with(trimmed, "Extra") ||
+                           str_starts_with(trimmed, "Port") ||
+                           str_starts_with(trimmed, "Current") ||
+                           str_starts_with(trimmed, "Power") ||
+                           str_starts_with(trimmed, "Media") ||
+                           str_starts_with(trimmed, "Width") ||
+                           str_starts_with(trimmed, "Sleep") ||
+                           str_starts_with(trimmed, "Wake") ||
+                           str_starts_with(trimmed, "Description"));
 
         if (ends_with_colon && !is_property) {
             /* 任何以 ':' 结尾的非属性行都视为设备节点 -> flush 上一个
@@ -728,6 +791,11 @@ static void get_usb_via_system_profiler(USBList *list) {
                     cur.is_storage = 1;
                 } else if (str_starts_with(kt, "Removable Media")) {
                     /* 可移动介质也是 USB 存储设备的强标志 */
+                    cur.is_storage = 1;
+                } else if (str_starts_with(kt, "Ejectable Media")) {
+                    /* 可弹出介质也是 USB 存储设备的标志 */
+                    cur.is_storage = 1;
+                } else if (str_starts_with(kt, "Ejectable")) {
                     cur.is_storage = 1;
                 }
                 free(key);

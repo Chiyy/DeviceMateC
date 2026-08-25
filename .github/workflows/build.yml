@@ -145,66 +145,11 @@ jobs:
           zip -r -q "${APP_NAME}.zip" "$APP_NAME"
           echo "Created $APP_NAME and ${APP_NAME}.zip"
 
-      - name: Build AppImage (Linux)
-        if: matrix.os_name == 'linux'
-        shell: bash
-        run: |
-          set -e
-          APPDIR=AppDir
-          rm -rf "$APPDIR"
-          mkdir -p "$APPDIR/usr/bin" \
-                   "$APPDIR/usr/share/applications" \
-                   "$APPDIR/usr/share/icons/hicolor/128x128/apps"
-          # 复制已 UPX 压缩的二进制 + 图标 + .desktop 到 AppDir
-          cp "${{ matrix.output }}" "$APPDIR/usr/bin/DeviceMate"
-          chmod +x "$APPDIR/usr/bin/DeviceMate"
-          # 图标必须放在 AppDir 根目录, 文件名 = Icon 值 (.desktop 里 Icon=DeviceMate)
-          # appimagetool 不认 usr/share/icons/hicolor/..., 它扫根目录
-          cp logo.png "$APPDIR/DeviceMate.png"
-          cp logo.png "$APPDIR/usr/share/icons/hicolor/128x128/apps/DeviceMate.png"
-
-          # .desktop 必须放在 AppDir 根目录 (appimagetool 要求)
-          # 同时复制一份到 usr/share/applications/ 供桌面环境识别图标
-          cat > "$APPDIR/DeviceMate.desktop" <<EOF
-          [Desktop Entry]
-          Type=Application
-          Name=DeviceMate
-          Exec=DeviceMate
-          Icon=DeviceMate
-          Categories=Utility;
-          Terminal=false
-          EOF
-          cp "$APPDIR/DeviceMate.desktop" "$APPDIR/usr/share/applications/DeviceMate.desktop"
-
-          # 手写 AppRun (shell 脚本入口)。
-          # 不用 linuxdeploy 是因为它会对二进制跑 patchelf+strip, 对 UPX 压缩
-          # 后的 self-decompressing ELF 报 "no section headers" 失败。
-          # 本程序静态链接无依赖, 不需要 linuxdeploy 部署任何东西。
-          cat > "$APPDIR/AppRun" <<EOF
-          #!/bin/sh
-          HERE="\$(dirname "\$(readlink -f "\$0")")"
-          exec "\${HERE}/usr/bin/DeviceMate" "\$@"
-          EOF
-          chmod +x "$APPDIR/AppRun"
-
-          # AppImage 工具在 CI/docker 里 FUSE 不可用, 用 extract-and-run 绕过
-          export ARCH=x86_64
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          export APPIMAGETOOL_SKIP_NEEDS_UPX=1
-
-          wget -q -O appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool.AppImage
-
-          ./appimagetool.AppImage "$APPDIR" "DeviceMate-linux.AppImage"
-          chmod +x "DeviceMate-linux.AppImage"
-          ls -lh "DeviceMate-linux.AppImage"
-
       - name: Set execute permissions (non-Windows)
         shell: bash
         run: |
           if [ "${{ matrix.os_name }}" != "windows" ]; then
             chmod +x "${{ matrix.output }}" 2>/dev/null || true
-            chmod +x "DeviceMate-linux.AppImage" 2>/dev/null || true
           fi
 
       - name: Upload artifact
@@ -214,7 +159,6 @@ jobs:
           path: |
             ${{ matrix.output }}
             ${{ matrix.output }}.app.zip
-            DeviceMate-linux.AppImage
 
   release:
     name: Create Release
@@ -232,7 +176,6 @@ jobs:
           mkdir -p release
           find dist -name "DeviceMate-windows.exe" -exec cp {} release/ \;
           find dist -name "DeviceMate-linux" -exec cp {} release/ \;
-          find dist -name "DeviceMate-linux.AppImage" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos.app.zip" -exec cp {} release/ \;
           ls -lh release/
@@ -250,14 +193,13 @@ jobs:
 
           ### 下载
           - Windows: \`DeviceMate-windows.exe\`
-          - Linux (amd64): \`DeviceMate-linux\` (命令行) 或 \`DeviceMate-linux.AppImage\` (双击运行带图标)
+          - Linux (amd64): \`DeviceMate-linux\`
           - macOS (Universal): \`DeviceMate-macos\` 或 \`DeviceMate-macos.app.zip\` (双击运行不弹终端)
 
           ### 使用方法
           \`\`\`
           # Windows: 双击 exe 文件
-          # Linux: 命令行 ./DeviceMate-linux 或 双击 DeviceMate-linux.AppImage
-          #   AppImage 首次运行: 右键 → 属性 → 允许作为程序执行 (或 chmod +x)
+          # Linux: ./DeviceMate-linux
           # macOS: 解压 .app.zip 后双击 .app
           \`\`\`
 
@@ -278,7 +220,6 @@ jobs:
           files: |
             release/DeviceMate-windows.exe
             release/DeviceMate-linux
-            release/DeviceMate-linux.AppImage
             release/DeviceMate-macos
             release/DeviceMate-macos.app.zip
           fail_on_unmatched_files: false
