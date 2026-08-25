@@ -47,6 +47,9 @@ static char g_json_path[512] = {0};
 static volatile int g_running = 1;
 static socket_t g_listen_fd = INVALID_SOCK;
 
+/* USB 调试开关 (platform_darwin.c 通过 extern 引用) */
+int g_debug_usb = 0;
+
 /* 单例锁句柄: 进程退出时自动释放 */
 #ifdef _WIN32
 static HANDLE g_mutex = NULL;
@@ -380,6 +383,7 @@ static void show_help(void) {
     printf("  --json PATH   将采集结果保存为 JSON 文件\n");
     printf("  --port N      指定端口 (0=自动分配)\n");
     printf("  --no-browser  不自动打开浏览器\n");
+    printf("  --debug-usb   (macOS) USB 存储设备诊断模式\n");
     printf("  --help        显示帮助信息\n");
 }
 
@@ -406,6 +410,8 @@ static void parse_args(int argc, char **argv) {
         } else if (strncmp(argv[i], "--json=", 7) == 0) {
             g_json_output = 1;
             strncpy(g_json_path, argv[i] + 7, sizeof(g_json_path) - 1);
+        } else if (strcmp(argv[i], "--debug-usb") == 0) {
+            g_debug_usb = 1;
         }
     }
 }
@@ -598,6 +604,17 @@ int main(int argc, char **argv) {
 #endif
 
     parse_args(argc, argv);
+
+    /* USB 诊断模式: 仅 macOS, 运行诊断后退出 */
+    if (g_debug_usb) {
+#ifdef __APPLE__
+        debug_usb_devices();
+#else
+        fprintf(stderr, "--debug-usb 仅支持 macOS 平台\n");
+#endif
+        return 0;
+    }
+
     int headless = detect_headless();
     /* 同步全局变量, 使 try_connect_existing 能正确判断是否打开浏览器 */
     g_headless = headless;

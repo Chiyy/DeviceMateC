@@ -74,6 +74,9 @@ char *get_device_serial(void);
 char *get_hdd_serials(void);
 void get_usb_devices(USBDevice **devices, int *count);
 
+/* USB 诊断 (macOS 平台, main.c 在 --debug-usb 下调用) */
+void debug_usb_devices(void);
+
 /* ====== 平台定义 ====== */
 
 #ifdef _WIN32
@@ -102,5 +105,9 @@ extern char g_sudo_password[256];
 
 /* 构建带 sudo 密码的命令 (无密码时返回 strdup(cmd)) */
 char *build_sudo_cmd(const char *cmd);
+
+/* ====== USB 调试开关 (main.c 定义, platform_darwin.c 使用) ====== */
+
+extern int g_debug_usb;
 
 #endif /* DM_H */

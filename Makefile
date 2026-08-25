@@ -62,7 +62,7 @@ SRCS = main.c collector.c $(PLATFORM_SRC)
 OBJS = $(SRCS:.c=.o)
 HEADERS = dm.h $(EMBED_DEP)
 
-.PHONY: all clean windows linux macos
+.PHONY: all clean windows linux macos macos-debug debug
 
 all: $(EXE)
 
@@ -114,6 +114,16 @@ linux:
 macos:
 	$(MAKE) CC=o64-clang \
 		UNAME_S=Darwin
+
+# macOS 调试版本: 不优化, 含调试符号, USB 检测日志默认开启
+macos-debug:
+	$(MAKE) CC=o64-clang \
+		UNAME_S=Darwin \
+		CFLAGS="-std=gnu11 -g -O0 -Wall -Wextra -ffunction-sections -fdata-sections -DUSB_DEBUG_ALWAYS_ON"
+
+# 当前平台调试版本
+debug:
+	$(MAKE) CFLAGS="-std=gnu11 -g -O0 -Wall -Wextra -ffunction-sections -fdata-sections"
 
 clean:
 	rm -f $(OBJS) $(EXE) DeviceMate DeviceMate.exe web_ui.h logo_png.h app_resource.o
