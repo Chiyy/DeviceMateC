@@ -515,87 +515,128 @@ static void get_disk_info_from_ioreg(const char *disk_id,
         free(out);
     }
 
-    /* 备选路径: ioreg -c IOUSBHostDevice (USB 设备树, 含父节点 USB 属性 + 子节点 BSD Name) */
-    if (!cur_serial) {
-        char *out2 = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice 2>&1");
-        usb_dbg_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice", out2);
-        if (out2) {
-            int n = 0;
-            char **lines = split_lines_copy(out2, &n);
-            int found_disk = 0;
-            /* latest_usb_* 追踪最近 IOUSBHostDevice 父节点的 USB 属性
-             * (这些属性出现在子节点 BSD Name 之前, 必须先追后用) */
-            char *latest_usb_serial = NULL, *latest_usb_product = NULL, *latest_usb_vendor = NULL;
-            for (int i = 0; i < n; i++) {
-                char *line = str_trim(lines[i]);
-
-                /* 进入新的 IOUSBHostDevice 父节点: 清空追踪 (兄弟设备互不串扰) */
-                if ((str_contains(line, "+-o ") || str_contains(line, "\\-o ")) &&
-                    str_contains(line, "IOUSBHostDevice")) {
-                    free(latest_usb_serial); latest_usb_serial = NULL;
-                    free(latest_usb_product); latest_usb_product = NULL;
-                    free(latest_usb_vendor); latest_usb_vendor = NULL;
-                    /* 若已找到磁盘且拿到所需信息, 结束 */
-                    if (found_disk && (cur_serial || cur_model)) break;
-                    continue;
-                }
-
-                /* 始终追踪 USB 属性 (出现在父节点, latest wins) */
-                if (str_contains(line, "\"USB Serial Number\"")) {
-                    char *v = ioreg_extract_value(line, "USB Serial Number");
-                    if (v && v[0] && strcmp(v, "None") != 0) { free(latest_usb_serial); latest_usb_serial = v; }
-                    else free(v);
-                } else if (str_contains(line, "\"USB Product Name\"")) {
-                    char *v = ioreg_extract_value(line, "USB Product Name");
-                    if (v && v[0] && !str_starts_with(v, "0x")) { free(latest_usb_product); latest_usb_product = v; }
-                    else free(v);
-                } else if (str_contains(line, "\"USB Vendor Name\"")) {
-                    char *v = ioreg_extract_value(line, "USB Vendor Name");
-                    if (v && v[0] && !str_starts_with(v, "0x")) { free(latest_usb_vendor); latest_usb_vendor = v; }
-                    else free(v);
-                }
-
-                /* 命中 BSD Name: 立即从父节点 latest_usb_* 接管 USB 属性 */
-                if (str_contains(line, bsd_match)) {
-                    found_disk = 1;
-                    if (!cur_serial && latest_usb_serial) cur_serial = strdup(latest_usb_serial);
-                    if (!cur_model && latest_usb_product) cur_model = strdup(latest_usb_product);
-                    if (!cur_vendor && latest_usb_vendor) cur_vendor = strdup(latest_usb_vendor);
-                    continue;
-                }
-
-                /* found_disk 之后, 继续提取子节点块存储属性 (覆盖 USB 层, 更可靠) */
-                if (!found_disk) continue;
-
-                if (str_contains(line, "\"device-serial-number\"")) {
-                    char *v = ioreg_extract_value(line, "device-serial-number");
-                    if (v && v[0] && strcmp(v, "None") != 0) { free(cur_serial); cur_serial = v; }
-                    else free(v);
-                } else if (str_contains(line, "\"device-model\"")) {
-                    char *v = ioreg_extract_value(line, "device-model");
-                    if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_model); cur_model = v; }
-                    else free(v);
-                } else if (str_contains(line, "\"device-vendor\"")) {
-                    char *v = ioreg_extract_value(line, "device-vendor");
-                    if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_vendor); cur_vendor = v; }
-                    else free(v);
-                } else if ((str_contains(line, "+-o ") || str_contains(line, "\\-o ")) &&
-                           (cur_serial || cur_model)) {
-                    /* 进入非 IOUSBHostDevice 子节点且已有信息, 结束 */
-                    break;
-                }
-            }
-            free(latest_usb_serial);
-            free(latest_usb_product);
-            free(latest_usb_vendor);
-            free_lines(lines, n);
-            free(out2);
-        }
-    }
-
     *out_serial = cur_serial;
     *out_model = cur_model;
     *out_vendor = cur_vendor;
+}
+
+/* 通过 USB 产品名在 IOUSBHostDevice 树中查找对应的 USB 序列号。
+ *
+ * 关键: BSD Name 只存在于 IOBlockStorageDevice 树, 不在 IOUSBHostDevice 树中,
+ * 因此无法通过 BSD Name 关联两棵树。改用 USB Product Name 关联
+ * (diskutil info 的 "Device Name" 与 ioreg 的 "USB Product Name" 通常一致)。
+ *
+ * 返回 malloc 的新串, 找不到返回 NULL。 */
+static char *find_usb_serial_by_product(const char *product_name) {
+    if (!product_name || !product_name[0]) return NULL;
+
+    char *out = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice 2>&1");
+    usb_dbg_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice (find_usb_serial_by_product)", out);
+    if (!out) return NULL;
+
+    int n = 0;
+    char **lines = split_lines_copy(out, &n);
+    char *result = NULL;
+    char *cur_product = NULL;
+    char *cur_serial = NULL;
+    int matched = 0;
+
+    for (int i = 0; i < n && !result; i++) {
+        char *line = str_trim(lines[i]);
+
+        /* 进入新的 IOUSBHostDevice 节点: 先检查上一个设备是否匹配, 再重置 */
+        if ((str_contains(line, "+-o ") || str_contains(line, "\\-o ")) &&
+            str_contains(line, "IOUSBHostDevice")) {
+            if (matched && cur_serial) {
+                result = strdup(cur_serial);
+                break;
+            }
+            free(cur_product); cur_product = NULL;
+            free(cur_serial);   cur_serial = NULL;
+            matched = 0;
+            continue;
+        }
+
+        /* 追踪当前 IOUSBHostDevice 节点的 USB 属性 */
+        if (str_contains(line, "\"USB Product Name\"")) {
+            char *v = ioreg_extract_value(line, "USB Product Name");
+            if (v && v[0]) {
+                free(cur_product); cur_product = v;
+                matched = (strcmp(v, product_name) == 0);
+                usb_dbg("USB Product Name='%s' vs 目标='%s' → %s",
+                        v, product_name, matched ? "匹配" : "不匹配");
+            } else free(v);
+        } else if (str_contains(line, "\"USB Serial Number\"")) {
+            char *v = ioreg_extract_value(line, "USB Serial Number");
+            if (v && v[0] && strcmp(v, "None") != 0) { free(cur_serial); cur_serial = v; }
+            else free(v);
+        }
+    }
+
+    /* 处理最后一个设备 (循环结束未被边界触发) */
+    if (!result && matched && cur_serial) {
+        result = strdup(cur_serial);
+    }
+
+    free(cur_product);
+    free(cur_serial);
+    free_lines(lines, n);
+    free(out);
+    return result;
+}
+
+/* 通过 USB 产品名在 IOUSBHostDevice 树中查找对应的 USB 厂商名。
+ * 逻辑同 find_usb_serial_by_product, 但提取 "USB Vendor Name"。 */
+static char *find_usb_vendor_by_product(const char *product_name) {
+    if (!product_name || !product_name[0]) return NULL;
+
+    char *out = run_cmd("ioreg -r -d 5 -w 0 -l -c IOUSBHostDevice 2>&1");
+    if (!out) return NULL;
+
+    int n = 0;
+    char **lines = split_lines_copy(out, &n);
+    char *result = NULL;
+    char *cur_product = NULL;
+    char *cur_vendor = NULL;
+    int matched = 0;
+
+    for (int i = 0; i < n && !result; i++) {
+        char *line = str_trim(lines[i]);
+
+        if ((str_contains(line, "+-o ") || str_contains(line, "\\-o ")) &&
+            str_contains(line, "IOUSBHostDevice")) {
+            if (matched && cur_vendor) {
+                result = strdup(cur_vendor);
+                break;
+            }
+            free(cur_product); cur_product = NULL;
+            free(cur_vendor);  cur_vendor = NULL;
+            matched = 0;
+            continue;
+        }
+
+        if (str_contains(line, "\"USB Product Name\"")) {
+            char *v = ioreg_extract_value(line, "USB Product Name");
+            if (v && v[0]) {
+                free(cur_product); cur_product = v;
+                matched = (strcmp(v, product_name) == 0);
+            } else free(v);
+        } else if (str_contains(line, "\"USB Vendor Name\"")) {
+            char *v = ioreg_extract_value(line, "USB Vendor Name");
+            if (v && v[0] && !str_starts_with(v, "0x")) { free(cur_vendor); cur_vendor = v; }
+            else free(v);
+        }
+    }
+
+    if (!result && matched && cur_vendor) {
+        result = strdup(cur_vendor);
+    }
+
+    free(cur_product);
+    free(cur_vendor);
+    free_lines(lines, n);
+    free(out);
+    return result;
 }
 
 /* 从 diskutil info <disk> 输出中提取指定字段值 (如 "Protocol", "Device Name")。
@@ -683,6 +724,21 @@ static void detect_usb_via_diskutil(USBList *list) {
             } else {
                 free(dev_name);
             }
+        }
+        /* 关键: 若仍无序列号, 通过 USB 产品名在 IOUSBHostDevice 树中查找
+         * (BSD Name 不在 IOUSBHostDevice 树中, 必须通过产品名关联) */
+        if (!serial && model) {
+            usb_dbg("通过产品名 '%s' 查找 USB 序列号...", model);
+            serial = find_usb_serial_by_product(model);
+            if (serial) {
+                usb_dbg("找到 USB 序列号: %s", serial);
+            } else {
+                usb_dbg("未找到匹配的 USB 序列号");
+            }
+        }
+        /* 同样通过产品名查找 USB 厂商 */
+        if (!vendor && model) {
+            vendor = find_usb_vendor_by_product(model);
         }
         const char *name = pick_name(model, vendor);
         if (serial || model || vendor) {
