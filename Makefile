@@ -49,10 +49,11 @@ else ifeq ($(UNAME_S),Linux)
 else ifeq ($(UNAME_S),Darwin)
     PLATFORM_SRC     = platform_darwin.c
     PLATFORM_LIBS    =
-    PLATFORM_LDFLAGS = -Wl,-dead_strip -Wl,-s
+    PLATFORM_LDFLAGS = -Wl,-dead_strip -Wl,-s -mmacosx-version-min=11.0
     PLATFORM_RES     =
     EXE              = DeviceMate
     DEFAULT_CC       = clang
+    CFLAGS += -mmacosx-version-min=11.0
 endif
 
 # CC: 命令行可覆盖, 否则用平台默认 (覆盖 make 内置 cc)

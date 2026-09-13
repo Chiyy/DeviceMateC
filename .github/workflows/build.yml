@@ -62,8 +62,8 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os_name }}" = "macos" ]; then
-            make CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -arch x86_64 -arch arm64" \
-                 PLATFORM_LDFLAGS="-Wl,-dead_strip -Wl,-s -arch x86_64 -arch arm64"
+            make CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -arch x86_64 -arch arm64 -mmacosx-version-min=11.0" \
+                 PLATFORM_LDFLAGS="-Wl,-dead_strip -Wl,-s -arch x86_64 -arch arm64 -mmacosx-version-min=11.0"
           else
             make
           fi
