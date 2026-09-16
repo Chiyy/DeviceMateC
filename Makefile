@@ -63,7 +63,7 @@ SRCS = main.c collector.c $(PLATFORM_SRC)
 OBJS = $(SRCS:.c=.o)
 HEADERS = dm.h $(EMBED_DEP)
 
-.PHONY: all clean windows linux macos macos-debug debug
+.PHONY: all clean windows windows-cli cli linux macos macos-debug debug
 
 all: $(EXE)
 
@@ -107,6 +107,21 @@ windows:
 		CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -I/usr/x86_64-w64-mingw32/include" \
 		PLATFORM_LDFLAGS="-Wl,--gc-sections -Wl,-s -static -mwindows"
 
+# Windows 命令行版本 (控制台子系统, 双击直接显示采集结果)
+windows-cli:
+	$(MAKE) CC=x86_64-w64-mingw32-gcc \
+		WINDRES=x86_64-w64-mingw32-windres \
+		UNAME_S=Windows \
+		EXE=DeviceMate-cli.exe \
+		CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -I/usr/x86_64-w64-mingw32/include -DCLI_MODE" \
+		PLATFORM_LDFLAGS="-Wl,--gc-sections -Wl,-s -static"
+
+# 当前平台命令行版本 (Windows 本地构建)
+cli:
+	$(MAKE) EXE=DeviceMate-cli.exe \
+		CFLAGS="-std=gnu11 -Os -Wall -Wextra -ffunction-sections -fdata-sections -DCLI_MODE" \
+		PLATFORM_LDFLAGS="-Wl,--gc-sections -Wl,-s -static"
+
 linux:
 	$(MAKE) CC=x86_64-linux-gnu-gcc \
 		UNAME_S=Linux \
@@ -127,4 +142,4 @@ debug:
 	$(MAKE) CFLAGS="-std=gnu11 -g -O0 -Wall -Wextra -ffunction-sections -fdata-sections"
 
 clean:
-	rm -f $(OBJS) $(EXE) DeviceMate DeviceMate.exe web_ui.h logo_png.h app_resource.o
+	rm -f $(OBJS) $(EXE) DeviceMate DeviceMate.exe DeviceMate-cli.exe web_ui.h logo_png.h app_resource.o

@@ -605,6 +605,13 @@ int main(int argc, char **argv) {
 
     parse_args(argc, argv);
 
+#ifdef CLI_MODE
+    /* CLI 版本: 双击 (无参数) 自动以 --once 模式运行 */
+    if (argc <= 1) {
+        g_once = 1;
+    }
+#endif
+
     /* USB 诊断模式: 仅 macOS, 运行诊断后退出 */
     if (g_debug_usb) {
 #ifdef __APPLE__
@@ -639,6 +646,11 @@ int main(int argc, char **argv) {
             printf("\n(检测到无桌面环境, 已自动退出。如需启动 API 服务请使用 --port 参数)\n");
         }
         free_info(&info);
+#if defined(_WIN32) && defined(CLI_MODE)
+        /* CLI 版本双击运行后暂停, 让用户能看到采集结果 */
+        printf("\n按任意键退出...\n");
+        system("pause >nul");
+#endif
         return 0;
     }
 

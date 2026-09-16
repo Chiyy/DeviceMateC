@@ -42,7 +42,7 @@ static char *ps_run(const char *script) {
    注意: str_trim 不会移动数据到缓冲区开头, 故用 memmove 处理前导空白。 */
 static int next_line(const char **cursor, char *line, size_t linesize) {
     const char *p = *cursor;
-    if (*p == '\0') return 0;
+    if (!p || *p == '\0') return 0;
     const char *end = strchr(p, '\n');
     size_t len = end ? (size_t)(end - p) : strlen(p);
     if (len >= linesize) len = linesize - 1;
@@ -119,7 +119,9 @@ static DiskInfo *get_disk_drives(int *count) {
             if (has_data) {
                 if (*count >= cap) {
                     cap *= 2;
-                    disks = (DiskInfo *)realloc(disks, cap * sizeof(DiskInfo));
+                    DiskInfo *tmp = (DiskInfo *)realloc(disks, cap * sizeof(DiskInfo));
+                    if (!tmp) { free(out); free_disk_drives(disks, *count); return NULL; }
+                    disks = tmp;
                 }
                 disks[(*count)++] = cur;
                 memset(&cur, 0, sizeof(cur));
@@ -141,7 +143,9 @@ static DiskInfo *get_disk_drives(int *count) {
     if (has_data) {
         if (*count >= cap) {
             cap += 1;
-            disks = (DiskInfo *)realloc(disks, cap * sizeof(DiskInfo));
+            DiskInfo *tmp = (DiskInfo *)realloc(disks, cap * sizeof(DiskInfo));
+            if (!tmp) { free(out); free_disk_drives(disks, *count); return NULL; }
+            disks = tmp;
         }
         disks[(*count)++] = cur;
     }

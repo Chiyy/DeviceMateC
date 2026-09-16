@@ -118,10 +118,12 @@ char *str_join(char **items, int count, const char *sep) {
 }
 
 int str_contains(const char *s, const char *sub) {
+    if (!s || !sub) return 0;
     return strstr(s, sub) != NULL;
 }
 
 int str_eq_ignore_case(const char *a, const char *b) {
+    if (!a || !b) return (a == b);  /* 两个都为 NULL 才相等 */
 #ifdef _WIN32
     return _stricmp(a, b) == 0;
 #else
@@ -130,6 +132,7 @@ int str_eq_ignore_case(const char *a, const char *b) {
 }
 
 int str_starts_with(const char *s, const char *prefix) {
+    if (!s || !prefix) return 0;
     return strncmp(s, prefix, strlen(prefix)) == 0;
 }
 

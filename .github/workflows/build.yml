@@ -71,6 +71,14 @@ jobs:
           if [ -f DeviceMate ]; then mv DeviceMate "${{ matrix.output }}"; fi
           ls -lh "${{ matrix.output }}"
 
+      - name: Build CLI version (Windows)
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
+          make clean
+          make cli
+          ls -lh DeviceMate-cli.exe
+
       - name: Check binary size
         shell: bash
         run: |
@@ -159,6 +167,7 @@ jobs:
           path: |
             ${{ matrix.output }}
             ${{ matrix.output }}.app.zip
+            DeviceMate-cli.exe
 
   release:
     name: Create Release
@@ -175,6 +184,7 @@ jobs:
         run: |
           mkdir -p release
           find dist -name "DeviceMate-windows.exe" -exec cp {} release/ \;
+          find dist -name "DeviceMate-cli.exe" -exec cp {} release/ \;
           find dist -name "DeviceMate-linux" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos" -exec cp {} release/ \;
           find dist -name "DeviceMate-macos.app.zip" -exec cp {} release/ \;
@@ -192,18 +202,20 @@ jobs:
           跨平台硬件信息采集工具 - C 语言实现, 单文件无依赖
 
           ### 下载
-          - Windows: \`DeviceMate-windows.exe\`
+          - Windows (GUI): \`DeviceMate-windows.exe\` (双击自动打开浏览器)
+          - Windows (命令行): \`DeviceMate-cli.exe\` (双击在控制台显示采集结果)
           - Linux (amd64): \`DeviceMate-linux\`
           - macOS (Universal): \`DeviceMate-macos\` 或 \`DeviceMate-macos.app.zip\` (双击运行不弹终端)
 
           ### 使用方法
           \`\`\`
-          # Windows: 双击 exe 文件
+          # Windows GUI: 双击 DeviceMate-windows.exe
+          # Windows CLI: 双击 DeviceMate-cli.exe (控制台窗口显示信息)
           # Linux: ./DeviceMate-linux
           # macOS: 解压 .app.zip 后双击 .app
           \`\`\`
 
-          ### 命令行模式
+          ### 命令行参数
           \`\`\`
           ./DeviceMate --once          # 采集一次并输出
           ./DeviceMate --once --json   # 输出 JSON
@@ -219,6 +231,7 @@ jobs:
           body_path: release_notes.md
           files: |
             release/DeviceMate-windows.exe
+            release/DeviceMate-cli.exe
             release/DeviceMate-linux
             release/DeviceMate-macos
             release/DeviceMate-macos.app.zip
